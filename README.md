@@ -3,7 +3,7 @@
 Kotlin Multiplatform bindings and a portable native bridge for
 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx).
 
-> Status: architecture is being finalized. No implementation code has landed yet.
+> Status: v0.1.0 Foundation is released. Native inference transports are next.
 
 ## Goal
 
@@ -38,6 +38,16 @@ sherpa-onnx core
 
 The portable bridge is added as a new, additive native target. Existing C,
 Java, Kotlin, and Swift APIs remain unchanged.
+
+## Development
+
+```bash
+./gradlew :sherpa-onnx-kmp:jvmTest
+./gradlew :sherpa-onnx-kmp:jsNodeTest
+```
+
+See [Releases](https://github.com/ic-timon/sherpa-onnx-kmp/releases) for published
+versions and [docs/roadmap.md](docs/roadmap.md) for the release gates.
 
 ## Documentation
 
