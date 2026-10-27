@@ -3,7 +3,7 @@
 Kotlin Multiplatform bindings and a portable native bridge for
 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx).
 
-> Status: v0.1.0 Foundation is released. Native inference transports are next.
+> Status: v0.2.0 Portable Bridge ABI is in progress.
 
 ## Goal
 

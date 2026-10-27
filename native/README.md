@@ -1,0 +1,45 @@
+# Native Portable Bridge
+
+## Prerequisites
+
+- CMake 3.20 or newer
+- Ninja
+- A C++17 compiler
+- macOS arm64/x86_64 for the current host build
+
+## Build
+
+```bash
+./scripts/fetch-native-deps.sh
+source_dir=$(./scripts/bootstrap-sherpa-source.sh | tail -n 1)
+
+cmake -S native -B build/native -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DSHERPA_ONNX_SOURCE_DIR="$source_dir" \
+  -DSHERPA_ONNX_KMP_BUILD_TESTS=ON
+
+cmake --build build/native -j 4
+ctest --test-dir build/native --output-on-failure
+```
+
+The dependency cache lives under:
+
+```text
+~/.cache/sherpa-onnx-kmp
+```
+
+The pinned integration model is downloaded by:
+
+```bash
+./scripts/test-bridge-integration.sh
+```
+
+Models are test-only and are not committed to the repository.
+
+## Outputs
+
+```text
+build/native/portable-bridge/libsherpa-onnx-portable-bridge.dylib
+build/native/portable-bridge/sherpa-onnx-portable-bridge-cli
+build/native/portable-bridge/tests/sherpa-onnx-portable-bridge-test
+```

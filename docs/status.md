@@ -11,9 +11,11 @@ Last updated: 2026-10-27
 - Public contract layer compiles for JVM, JS, iOS simulator, macOS arm64,
   Linux x64/arm64, and Windows x64.
 - JVM and JS Node contract tests pass.
-- v0.1.0 foundation contract layer is ready for release.
-- No native transport or Portable Bridge implementation yet.
-- No upstream change has been proposed yet.
+- v0.2.0 Portable Bridge ABI is implemented and locally verified.
+- The bridge builds against patched sherpa-onnx v2.0.1 on macOS arm64.
+- Offline ASR bridge integration passes with a pinned model.
+- KMP transport implementations are not implemented yet.
+- An upstream RFC/issue has not been opened yet.
 
 ## Accepted direction
 
@@ -40,8 +42,8 @@ Last updated: 2026-10-27
 
 ## Immediate workstreams
 
-1. Specify the Portable Bridge ABI and stable result schema.
+1. Run the portable bridge workflow on the target platform matrix.
 2. Add a docs-only upstream RFC and tracking issue.
-3. Implement the option/result mappers and bridge skeleton.
-4. Implement JNI, Native, and Web transports behind the same contract.
+3. Implement JNI transport for JVM and Android.
+4. Implement Native and Web transports behind the same contract.
 5. Build the platform packaging and CI matrix.
