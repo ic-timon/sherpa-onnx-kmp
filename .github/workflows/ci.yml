@@ -23,7 +23,12 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew :sherpa-onnx-kmp:jvmTest :sherpa-onnx-kmp:jsNodeTest --stacktrace
+      - name: Verify portable JS lockfile
+        run: ./scripts/check-lockfiles.sh
+      - name: Run JVM and JS tests
+        env:
+          YARN_REGISTRY: https://registry.npmjs.org
+        run: ./gradlew :sherpa-onnx-kmp:jvmTest :sherpa-onnx-kmp:jsNodeTest --stacktrace
 
   native-cross-compile:
     runs-on: macos-15
