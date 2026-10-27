@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-10-27
+Last updated: 2026-10-28
 
 ## Current state
 
@@ -11,13 +11,20 @@ Last updated: 2026-10-27
 - Public contract layer compiles for JVM, JS, iOS simulator, macOS arm64,
   Linux x64/arm64, and Windows x64.
 - JVM and JS Node contract tests pass.
-- v0.3.0 JVM and Android integration is implemented.
+- v0.3.0 JVM and Android integration is released.
 - JVM JNI transport works with both explicit native paths and classpath native
   JAR extraction.
 - Android AAR is built for arm64-v8a, armeabi-v7a, x86, and x86_64.
 - JVM CLI and Android arm64 emulator tests pass with a pinned model.
 - Android sample app builds.
-- Apple, native desktop, and web transports are not implemented yet.
+- v0.4.0 Apple integration is implemented for iOS and Apple Silicon macOS.
+- Kotlin/Native cinterop, `FileModelStore`, and `BundleModelStore` are working.
+- macOS arm64 and iOS Simulator transcribe the pinned model.
+- The self-contained Apple XCFramework builds, signs, and contains no external
+  ONNX Runtime framework.
+- The iOS sample installs, launches, and transcribes in Simulator.
+- The iOS device slice and sample app link without a physical device.
+- Native desktop and web transports are not implemented yet.
 - An upstream RFC/issue has not been opened yet.
 
 ## Accepted direction
@@ -35,18 +42,18 @@ Last updated: 2026-10-27
 - JVM remains supported for Compose Desktop, Windows ARM64, Intel macOS, and
   Java interoperability.
 
-## Open decisions
+## Open release gates
 
-- Exact portable bridge operation names and versioning policy.
+- Run Apple inference on a physical iPhone and record the device, OS version,
+  model checksum, and transcript before marking Apple support stable.
 - Native library distribution format for Linux and Windows.
-- Whether iOS x64 and macOS x64 remain release targets or compatibility-only.
+- Whether iOS x64 and macOS x64 remain compatibility-only targets.
 - Minimum supported browser versions for the web target.
 - Repository publication coordinates and release automation.
 
 ## Immediate workstreams
 
-1. Run JVM and Android CI on the target matrix.
-2. Implement Apple cinterop transport and XCFramework packaging.
-3. Implement native desktop transports.
-4. Implement the Web Worker transport.
-5. Build the complete platform packaging and release matrix.
+1. Complete the physical iPhone release gate when hardware is available.
+2. Implement Linux x64/arm64 and Windows x64 native desktop transports.
+3. Implement the Web Worker transport.
+4. Build the complete platform packaging and release matrix.

@@ -15,3 +15,4 @@ Records:
 - [0003](0003-public-api.md): Async task-oriented public API
 - [0004](0004-web-runtime.md): Kotlin/JS plus Emscripten worker
 - [0005](0005-model-store.md): ModelStore resource abstraction
+- [0006](0006-apple-distribution.md): Self-contained Apple XCFramework

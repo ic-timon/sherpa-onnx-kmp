@@ -43,3 +43,7 @@ sherpa-onnx-kmp/src/androidDeviceTest/assets/models/
 
 # Native libraries are assembled from pinned sources during the build
 sherpa-onnx-kmp/src/androidMain/jniLibs/**/*.so
+
+# Apple sample model assets are populated from the pinned test model
+samples/apple/iOS/SherpaKmpSample/SherpaModels/models/*
+!samples/apple/iOS/SherpaKmpSample/SherpaModels/models/README.txt

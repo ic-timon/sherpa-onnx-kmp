@@ -4,9 +4,36 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+No unreleased changes.
+
+## [0.4.0] - 2026-10-28
+
 ### Added
 
-- Foundation KMP module and public API contracts.
+- Kotlin/Native cinterop transport for the Portable Bridge.
+- Apple targets for iOS device, iOS Simulator, and Apple Silicon macOS.
+- `FileModelStore` and `BundleModelStore` for Apple.
+- Self-contained `SherpaOnnxKmp.xcframework` with the bridge, sherpa-onnx,
+  and ONNX Runtime statically embedded.
+- SwiftUI iOS sample and Swift macOS command-line sample.
+- Apple CI covering native builds, cinterop, real-model inference, simulator
+  execution, XCFramework creation, code signing, and device linking.
+- `@Throws` annotations on asynchronous public APIs so Swift receives Kotlin
+  failures as `NSError` instead of terminating the process.
+
+### Verification
+
+- macOS arm64 and iOS Simulator transcribe the pinned Persian ASR model.
+- The iOS device framework and sample app link without a connected device.
+- XCFramework slices contain exactly one bridge and one ONNX Runtime symbol.
+- No external ONNX Runtime framework is referenced by the XCFramework.
+- The sample app installs, launches, and transcribes in iOS Simulator.
+
+### Known release gate
+
+- A physical iPhone execution test was not available on the development host.
+  Device compilation and linking pass, but Apple support remains preview until
+  that test is recorded.
 
 ## [0.3.0] - 2026-10-27
 

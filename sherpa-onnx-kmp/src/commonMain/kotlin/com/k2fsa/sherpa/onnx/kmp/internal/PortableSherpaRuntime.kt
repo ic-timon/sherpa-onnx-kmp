@@ -64,6 +64,7 @@ internal class PortableSherpaRuntime(
     private val mutex = Mutex()
     private val children = linkedSetOf<SherpaResource>()
 
+    @Throws(Throwable::class)
     override suspend fun createOfflineRecognizer(
         config: OfflineRecognizerConfig,
     ): OfflineRecognizer = mutex.withLock {
@@ -83,18 +84,22 @@ internal class PortableSherpaRuntime(
         recognizer
     }
 
+    @Throws(Throwable::class)
     override suspend fun createOnlineRecognizer(
         config: OnlineRecognizerConfig,
     ): OnlineRecognizer = unsupported(SherpaFeature.ONLINE_ASR)
 
+    @Throws(Throwable::class)
     override suspend fun createVoiceActivityDetector(
         config: VadConfig,
     ): VoiceActivityDetector = unsupported(SherpaFeature.VAD)
 
+    @Throws(Throwable::class)
     override suspend fun createOfflineTts(
         config: OfflineTtsConfig,
     ): OfflineTts = unsupported(SherpaFeature.TTS)
 
+    @Throws(Throwable::class)
     override suspend fun close() = mutex.withLock {
         if (state.markClosed()) {
             children.toList().forEach { it.close() }
@@ -122,6 +127,7 @@ internal class PortableOfflineRecognizer(
     private val state = ResourceState()
     private val mutex = Mutex()
 
+    @Throws(Throwable::class)
     override suspend fun transcribe(audio: AudioData): RecognitionResult = mutex.withLock {
         state.requireOpen()
         transport.pushAudio(handle, "offline-asr.set-audio", audio)
@@ -129,9 +135,11 @@ internal class PortableOfflineRecognizer(
         bridgeJson.decodeFromString(RecognitionResult.serializer(), resultJson)
     }
 
+    @Throws(Throwable::class)
     override suspend fun transcribeBatch(audio: List<AudioData>): List<RecognitionResult> =
         audio.map { transcribe(it) }
 
+    @Throws(Throwable::class)
     override suspend fun close() = mutex.withLock {
         if (state.markClosed()) {
             try {

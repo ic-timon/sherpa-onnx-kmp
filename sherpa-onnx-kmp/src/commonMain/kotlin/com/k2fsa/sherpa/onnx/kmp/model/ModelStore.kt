@@ -26,5 +26,6 @@ public data class PreparedModel(
  * Resolves logical model files into a runtime-accessible root.
  */
 public fun interface ModelStore {
+    @Throws(Throwable::class)
     public suspend fun prepare(files: Set<ModelPath>): PreparedModel
 }

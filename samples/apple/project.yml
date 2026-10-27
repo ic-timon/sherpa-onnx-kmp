@@ -1,0 +1,63 @@
+name: SherpaKmpSamples
+options:
+  bundleIdPrefix: com.k2fsa.sherpa.onnx.kmp.sample
+  deploymentTarget:
+    iOS: "15.0"
+    macOS: "13.0"
+  xcodeVersion: "27.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+targets:
+  SherpaKmpIOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: Shared
+      - path: iOS/SherpaKmpSample
+        excludes:
+          - SherpaModels
+      - path: iOS/SherpaKmpSample/SherpaModels
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - framework: ../../build/release/0.4.0/SherpaOnnxKmp.xcframework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.k2fsa.sherpa.onnx.kmp.sample.ios
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait"
+        TARGETED_DEVICE_FAMILY: "1,2"
+  SherpaKmpMacOS:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Shared
+      - path: macOS
+    dependencies:
+      - framework: ../../build/release/0.4.0/SherpaOnnxKmp.xcframework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.k2fsa.sherpa.onnx.kmp.sample.macos
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path"
+
+schemes:
+  SherpaKmpIOS:
+    build:
+      targets:
+        SherpaKmpIOS: all
+    run:
+      config: Debug
+  SherpaKmpMacOS:
+    build:
+      targets:
+        SherpaKmpMacOS: all
+    run:
+      config: Debug

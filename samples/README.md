@@ -21,3 +21,9 @@ SHERPA_ONNX_KMP_NATIVE_PATH="$PWD/build/native/lib" \
 ```
 
 The app expects `model.int8.onnx`, `tokens.txt`, and `test_wavs/0.wav`.
+
+## Apple Swift Samples
+
+`./scripts/test-apple-samples.sh 0.4.0` builds and runs the macOS sample, runs
+the iOS sample in Simulator, and links the iOS device target without a connected
+physical device. See [apple/README.md](apple/README.md).
