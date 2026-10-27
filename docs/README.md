@@ -7,3 +7,4 @@
 - [Required upstream changes](upstream.md)
 - [Implementation status](status.md)
 - [Architecture decision records](adr/README.md)
+- [Release process](releases.md)

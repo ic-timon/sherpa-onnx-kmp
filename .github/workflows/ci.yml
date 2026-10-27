@@ -1,0 +1,55 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  jvm-and-js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew :sherpa-onnx-kmp:jvmTest :sherpa-onnx-kmp:jsNodeTest --stacktrace
+
+  native-cross-compile:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: >-
+          ./gradlew
+          :sherpa-onnx-kmp:compileKotlinIosSimulatorArm64
+          :sherpa-onnx-kmp:compileKotlinMacosArm64
+          :sherpa-onnx-kmp:compileKotlinLinuxX64
+          :sherpa-onnx-kmp:compileKotlinLinuxArm64
+          :sherpa-onnx-kmp:compileKotlinMingwX64
+          --stacktrace
+
+  metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew :sherpa-onnx-kmp:compileKotlinMetadata --stacktrace
