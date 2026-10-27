@@ -1,6 +1,7 @@
 # Documentation Index
 
 - [Terminal architecture](design.md)
+- [Portable Bridge ABI](bridge-abi.md)
 - [Version roadmap](roadmap.md)
 - [Platform matrix](platform-matrix.md)
 - [Testing strategy](testing.md)

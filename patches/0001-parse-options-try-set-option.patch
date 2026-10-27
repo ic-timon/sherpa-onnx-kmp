@@ -1,0 +1,116 @@
+diff --git a/sherpa-onnx/csrc/parse-options.cc b/sherpa-onnx/csrc/parse-options.cc
+index 861b6e80..30cb9675 100644
+--- a/sherpa-onnx/csrc/parse-options.cc
++++ b/sherpa-onnx/csrc/parse-options.cc
+@@ -570,6 +570,89 @@ bool ParseOptions::SetOption(const std::string &key, const std::string &value,
+   return true;
+ }
+ 
++bool ParseOptions::TrySetOption(const std::string &key,
++                                 const std::string &value,
++                                 std::string *error) {
++  if (error != nullptr) {
++    error->clear();
++  }
++
++  auto fail = [&](const std::string &message) {
++    if (error != nullptr) {
++      *error = message;
++    }
++    return false;
++  };
++
++  if (bool_map_.find(key) != bool_map_.end()) {
++    std::string normalized = value;
++    std::transform(normalized.begin(), normalized.end(), normalized.begin(),
++                   ::tolower);
++    if (normalized == "true" || normalized == "t" || normalized == "1" ||
++        normalized.empty()) {
++      *bool_map_[key] = true;
++      return true;
++    }
++    if (normalized == "false" || normalized == "f" || normalized == "0") {
++      *bool_map_[key] = false;
++      return true;
++    }
++    return fail("Invalid boolean option '" + key + "=" + value + "'");
++  }
++
++  if (int_map_.find(key) != int_map_.end()) {
++    int32_t parsed = 0;
++    if (!ConvertStringToInteger(value, &parsed)) {
++      return fail("Invalid integer option '" + key + "=" + value + "'");
++    }
++    *int_map_[key] = parsed;
++    return true;
++  }
++
++  if (int64_map_.find(key) != int64_map_.end()) {
++    int64_t parsed = 0;
++    if (!ConvertStringToInteger(value, &parsed)) {
++      return fail("Invalid int64 option '" + key + "=" + value + "'");
++    }
++    *int64_map_[key] = parsed;
++    return true;
++  }
++
++  if (uint_map_.find(key) != uint_map_.end()) {
++    uint32_t parsed = 0;
++    if (!ConvertStringToInteger(value, &parsed)) {
++      return fail("Invalid unsigned option '" + key + "=" + value + "'");
++    }
++    *uint_map_[key] = parsed;
++    return true;
++  }
++
++  if (float_map_.find(key) != float_map_.end()) {
++    float parsed = 0;
++    if (!ConvertStringToReal(value, &parsed)) {
++      return fail("Invalid float option '" + key + "=" + value + "'");
++    }
++    *float_map_[key] = parsed;
++    return true;
++  }
++
++  if (double_map_.find(key) != double_map_.end()) {
++    double parsed = 0;
++    if (!ConvertStringToReal(value, &parsed)) {
++      return fail("Invalid double option '" + key + "=" + value + "'");
++    }
++    *double_map_[key] = parsed;
++    return true;
++  }
++
++  if (string_map_.find(key) != string_map_.end()) {
++    *string_map_[key] = value;
++    return true;
++  }
++
++  return fail("Unknown option '" + key + "'");
++}
++
+ bool ParseOptions::ToBool(std::string str) const {
+   std::transform(str.begin(), str.end(), str.begin(), ::tolower);
+ 
+diff --git a/sherpa-onnx/csrc/parse-options.h b/sherpa-onnx/csrc/parse-options.h
+index 615ee7d3..2eb922ac 100644
+--- a/sherpa-onnx/csrc/parse-options.h
++++ b/sherpa-onnx/csrc/parse-options.h
+@@ -104,6 +104,17 @@ class ParseOptions {
+   /// program.
+   void ReadConfigFile(const std::string &filename);
+ 
++  /**
++   * Set an option without terminating the process on invalid input.
++   *
++   * This is intended for bindings that construct configs from serialized
++   * key-value data. On failure, returns false and stores a diagnostic in
++   * error when error is non-null.
++   */
++  bool TrySetOption(const std::string &key, const std::string &value,
++                    std::string *error);
++
++
+   /// Number of positional parameters (c.f. argc-1).
+   int NumArgs() const;
+ 

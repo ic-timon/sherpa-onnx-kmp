@@ -1,0 +1,65 @@
+name: portable-bridge
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/portable-bridge.yml'
+      - 'native/**'
+      - 'patches/**'
+      - 'scripts/bootstrap-sherpa-source.sh'
+      - 'scripts/fetch-native-deps.sh'
+      - 'scripts/lib.sh'
+      - 'scripts/test-bridge-integration.sh'
+      - 'sherpa-onnx-kmp/src/commonMain/kotlin/com/k2fsa/sherpa/onnx/kmp/internal/OfflineAsrBridgeOptions.kt'
+      - 'sherpa-onnx-kmp/src/commonTest/kotlin/com/k2fsa/sherpa/onnx/kmp/internal/OfflineAsrBridgeOptionsTest.kt'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/portable-bridge.yml'
+      - 'native/**'
+      - 'patches/**'
+      - 'scripts/**'
+      - 'sherpa-onnx-kmp/src/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portable-bridge-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache native dependencies and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/sherpa-onnx-kmp
+            build/native
+            build/upstream
+          key: portable-bridge-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch') }}
+      - name: Fetch pinned native dependencies
+        run: ./scripts/fetch-native-deps.sh
+      - name: Bootstrap patched sherpa-onnx source
+        run: |
+          source_dir=$(./scripts/bootstrap-sherpa-source.sh | tail -n 1)
+          echo "SHERPA_ONNX_SOURCE_DIR=$source_dir" >> "$GITHUB_ENV"
+      - name: Configure portable bridge
+        run: |
+          cmake -S native -B build/native -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSHERPA_ONNX_SOURCE_DIR="$SHERPA_ONNX_SOURCE_DIR" \
+            -DSHERPA_ONNX_KMP_BUILD_TESTS=ON
+      - name: Build portable bridge
+        run: cmake --build build/native -j 4
+      - name: Run bridge tests
+        run: ctest --test-dir build/native --output-on-failure
+      - name: Run pinned-model integration test
+        run: ./scripts/test-bridge-integration.sh
