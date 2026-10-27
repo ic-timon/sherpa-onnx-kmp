@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.k2fsa.sherpa.onnx"
-version = "0.1.0"
+version = "0.1.1"
 
 kotlin {
     explicitApi()
