@@ -1,0 +1,39 @@
+.DS_Store
+.idea/
+.gradle/
+.kotlin/
+build/
+**/build/
+local.properties
+*.hprof
+*.log
+
+# Kotlin/Native and native build outputs
+.konan/
+**/native/build/
+**/native/install/
+**/native/*.a
+**/native/*.dylib
+**/native/*.so
+**/native/*.dll
+**/native/*.lib
+**/native/*.xcframework/
+**/native/*.framework/
+
+# Xcode
+DerivedData/
+xcuserdata/
+*.xcuserstate
+
+# Node and web
+node_modules/
+**/web-build/
+**/dist/
+
+# Local test assets and models
+.cache/
+test-models/
+*.onnx
+*.ort
+*.rknn
+*.om
