@@ -7,7 +7,12 @@ Last updated: 2026-10-27
 - Public repository created.
 - Terminal architecture documented.
 - Platform boundaries documented.
-- No Gradle project or implementation code yet.
+- KMP Gradle project exists under `sherpa-onnx-kmp/`.
+- Public contract layer compiles for JVM, JS, iOS simulator, macOS arm64,
+  Linux x64/arm64, and Windows x64.
+- JVM and JS Node contract tests pass.
+- v0.1.0 foundation contract layer is ready for release.
+- No native transport or Portable Bridge implementation yet.
 - No upstream change has been proposed yet.
 
 ## Accepted direction
@@ -37,7 +42,6 @@ Last updated: 2026-10-27
 
 1. Specify the Portable Bridge ABI and stable result schema.
 2. Add a docs-only upstream RFC and tracking issue.
-3. Create the KMP Gradle project and common API skeleton.
-4. Implement the common option/result mappers and lifecycle tests.
-5. Implement JNI, Native, and Web transports behind the same contract.
-6. Build the platform packaging and CI matrix.
+3. Implement the option/result mappers and bridge skeleton.
+4. Implement JNI, Native, and Web transports behind the same contract.
+5. Build the platform packaging and CI matrix.

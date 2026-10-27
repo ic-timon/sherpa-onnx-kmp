@@ -42,6 +42,7 @@ Java, Kotlin, and Swift APIs remain unchanged.
 ## Documentation
 
 - [Design](docs/design.md)
+- [Version roadmap](docs/roadmap.md)
 - [Platform matrix](docs/platform-matrix.md)
 - [Testing strategy](docs/testing.md)
 - [Upstream changes](docs/upstream.md)
