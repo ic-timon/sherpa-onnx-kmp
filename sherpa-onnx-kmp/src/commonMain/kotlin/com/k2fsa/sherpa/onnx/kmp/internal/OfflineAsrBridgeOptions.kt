@@ -37,6 +37,11 @@ internal fun OfflineRecognizerConfig.toBridgeOptions(
             values["model-type"] = "paraformer"
         }
 
+        is OfflineModel.NemoCtc -> {
+            values["nemo-ctc-model"] = resolveModelPath(preparedModel, model.model)
+            values["model-type"] = "nemo_ctc"
+        }
+
         is OfflineModel.Whisper -> {
             values["whisper-encoder"] = resolveModelPath(preparedModel, model.encoder)
             values["whisper-decoder"] = resolveModelPath(preparedModel, model.decoder)

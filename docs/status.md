@@ -11,10 +11,13 @@ Last updated: 2026-10-27
 - Public contract layer compiles for JVM, JS, iOS simulator, macOS arm64,
   Linux x64/arm64, and Windows x64.
 - JVM and JS Node contract tests pass.
-- v0.2.0 Portable Bridge ABI is implemented and locally verified.
-- The bridge builds against patched sherpa-onnx v2.0.1 on macOS arm64.
-- Offline ASR bridge integration passes with a pinned model.
-- KMP transport implementations are not implemented yet.
+- v0.3.0 JVM and Android integration is implemented.
+- JVM JNI transport works with both explicit native paths and classpath native
+  JAR extraction.
+- Android AAR is built for arm64-v8a, armeabi-v7a, x86, and x86_64.
+- JVM CLI and Android arm64 emulator tests pass with a pinned model.
+- Android sample app builds.
+- Apple, native desktop, and web transports are not implemented yet.
 - An upstream RFC/issue has not been opened yet.
 
 ## Accepted direction
@@ -42,8 +45,8 @@ Last updated: 2026-10-27
 
 ## Immediate workstreams
 
-1. Run the portable bridge workflow on the target platform matrix.
-2. Add a docs-only upstream RFC and tracking issue.
-3. Implement JNI transport for JVM and Android.
-4. Implement Native and Web transports behind the same contract.
-5. Build the platform packaging and CI matrix.
+1. Run JVM and Android CI on the target matrix.
+2. Implement Apple cinterop transport and XCFramework packaging.
+3. Implement native desktop transports.
+4. Implement the Web Worker transport.
+5. Build the complete platform packaging and release matrix.

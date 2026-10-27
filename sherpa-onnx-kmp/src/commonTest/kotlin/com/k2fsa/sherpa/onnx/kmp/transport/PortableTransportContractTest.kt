@@ -48,6 +48,9 @@ class PortableTransportContractTest {
         private var nextHandle = 1L
         private val state = ResourceState()
 
+        override suspend fun infoJson(): String =
+            """{"abiVersion":1,"resources":["offline-asr"],"operations":["health"]}"""
+
         override suspend fun create(kind: String, optionsJson: String): BridgeHandle {
             state.requireOpen()
             operations += "create:$kind"

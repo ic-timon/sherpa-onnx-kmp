@@ -15,6 +15,10 @@
 #include "bridge_internal.h"
 #include "nlohmann/json.hpp"
 
+#if defined(SHERPA_ONNX_BRIDGE_WITH_SHERPA)
+#include "sherpa-onnx/csrc/version.h"
+#endif
+
 namespace sherpa_onnx::bridge {
 
 #if defined(SHERPA_ONNX_BRIDGE_WITH_SHERPA)
@@ -128,7 +132,7 @@ int32_t SherpaOnnxBridgeAbiVersion(void) {
 
 char *SherpaOnnxBridgeInfoJson(void) {
   namespace bridge = sherpa_onnx::bridge;
-  const nlohmann::json info = {
+  nlohmann::json info = {
       {"abiVersion", SHERPA_ONNX_BRIDGE_ABI_VERSION},
       {"schemaVersion", 1},
       {"resources", nlohmann::json::array({"offline-asr"})},
@@ -136,6 +140,10 @@ char *SherpaOnnxBridgeInfoJson(void) {
                                             "offline-asr.set-audio",
                                             "offline-asr.transcribe"})},
   };
+#if defined(SHERPA_ONNX_BRIDGE_WITH_SHERPA)
+  info["coreVersion"] = sherpa_onnx::GetVersionStr();
+  info["onnxruntimeVersion"] = sherpa_onnx::GetOnnxruntimeVersionStr();
+#endif
   return bridge::DuplicateString(info.dump());
 }
 

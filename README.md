@@ -3,7 +3,7 @@
 Kotlin Multiplatform bindings and a portable native bridge for
 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx).
 
-> Status: v0.2.0 Portable Bridge ABI is in progress.
+> Status: v0.3.0 JVM and Android integration is being released.
 
 ## Goal
 
@@ -48,6 +48,15 @@ Java, Kotlin, and Swift APIs remain unchanged.
 
 See [Releases](https://github.com/ic-timon/sherpa-onnx-kmp/releases) for published
 versions and [docs/roadmap.md](docs/roadmap.md) for the release gates.
+
+## JVM and Android
+
+- JVM: use the JVM artifact plus the matching native JAR, or set
+  `SHERPA_ONNX_KMP_NATIVE_PATH`.
+- Android: use the AAR; it contains all four Android ABI native payloads.
+- Samples: [samples/README.md](samples/README.md)
+- JNI details: [docs/jni-transport.md](docs/jni-transport.md)
+- Release inventory: [docs/release-0.3.0.md](docs/release-0.3.0.md)
 
 ## Documentation
 

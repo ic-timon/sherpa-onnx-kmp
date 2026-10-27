@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(SHERPA_ONNX_KMP_BUILD_TESTS "Build portable bridge tests" ON)
+option(SHERPA_ONNX_KMP_BUILD_JNI "Build the JVM/Android JNI transport" ON)
 
 # Set these before adding the sherpa-onnx project.
 set(SHERPA_ONNX_ENABLE_PYTHON OFF CACHE BOOL "" FORCE)
@@ -42,6 +43,13 @@ else()
 endif()
 
 add_subdirectory(portable-bridge)
+
+if(SHERPA_ONNX_KMP_BUILD_JNI)
+  if(NOT ANDROID)
+    find_package(JNI REQUIRED)
+  endif()
+  add_subdirectory(jni)
+endif()
 
 if(SHERPA_ONNX_KMP_BUILD_TESTS)
   enable_testing()

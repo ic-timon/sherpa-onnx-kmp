@@ -3,11 +3,12 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.android.kotlin.multiplatform.library)
     `maven-publish`
 }
 
 group = "com.k2fsa.sherpa.onnx"
-version = "0.2.0"
+version = "0.3.0"
 
 kotlin {
     explicitApi()
@@ -16,6 +17,24 @@ kotlin {
     jvm {
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
+        }
+    }
+
+    android {
+        namespace = "com.k2fsa.sherpa.onnx.kmp.android"
+        compileSdk = 37
+        minSdk = 21
+        withHostTest {}
+        withDeviceTest {
+            instrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        }
+        androidResources {
+            enable = true
+        }
+        compilations.configureEach {
+            compileTaskProvider.configure {
+                compilerOptions.jvmTarget.set(JvmTarget.JVM_11)
+            }
         }
     }
 
@@ -34,6 +53,12 @@ kotlin {
     applyDefaultHierarchyTemplate()
 
     sourceSets {
+        val jvmSharedMain = create("jvmSharedMain") {
+            dependsOn(commonMain.get())
+        }
+        jvmMain.get().dependsOn(jvmSharedMain)
+        androidMain.get().dependsOn(jvmSharedMain)
+
         commonMain.dependencies {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
@@ -42,6 +67,12 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
+        }
+
+        named("androidDeviceTest").get().dependencies {
+            implementation(kotlin("test"))
+            implementation("androidx.test.ext:junit:1.3.0")
+            implementation("androidx.test:runner:1.6.2")
         }
     }
 }

@@ -18,6 +18,8 @@ internal data class BridgeReply(
  * transports. Feature-specific logic must not live in implementations.
  */
 internal interface PortableTransport : SherpaResource {
+    suspend fun infoJson(): String
+
     suspend fun create(
         kind: String,
         optionsJson: String,

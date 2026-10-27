@@ -43,3 +43,11 @@ build/native/portable-bridge/libsherpa-onnx-portable-bridge.dylib
 build/native/portable-bridge/sherpa-onnx-portable-bridge-cli
 build/native/portable-bridge/tests/sherpa-onnx-portable-bridge-test
 ```
+
+## Android
+
+```bash
+./scripts/build-android-all.sh
+./gradlew :sherpa-onnx-kmp:assemble
+./scripts/check-android-aar.sh
+```

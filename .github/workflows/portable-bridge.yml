@@ -37,6 +37,10 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
       - name: Cache native dependencies and build
         uses: actions/cache@v4
         with:
@@ -63,3 +67,9 @@ jobs:
         run: ctest --test-dir build/native --output-on-failure
       - name: Run pinned-model integration test
         run: ./scripts/test-bridge-integration.sh
+      - name: Run JVM JNI integration test
+        env:
+          SHERPA_ONNX_KMP_NATIVE_PATH: ${{ github.workspace }}/build/native/lib
+        run: |
+          export SHERPA_ONNX_KMP_TEST_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/models/sherpa-onnx-nemo-ctc-fa-shenava-rizeh-pizeh-v1.0-non-streaming-int8-2026-06-26"
+          ./gradlew :sherpa-onnx-kmp:jvmTest --rerun-tasks --stacktrace
