@@ -12,6 +12,10 @@ public sealed interface OfflineModel {
         public val model: ModelPath,
     ) : OfflineModel
 
+    public data class NemoCtc(
+        public val model: ModelPath,
+    ) : OfflineModel
+
     public data class Whisper(
         public val encoder: ModelPath,
         public val decoder: ModelPath,
@@ -65,6 +69,7 @@ public fun OfflineRecognizerConfig.requiredModelFiles(): Set<ModelPath> =
             }
 
             is OfflineModel.Paraformer -> add(model.model)
+            is OfflineModel.NemoCtc -> add(model.model)
             is OfflineModel.Whisper -> {
                 add(model.encoder)
                 add(model.decoder)

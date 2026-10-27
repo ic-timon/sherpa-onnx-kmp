@@ -9,7 +9,8 @@
 - Minimum SDK: 21
 - ABI artifacts: arm64-v8a, armeabi-v7a, x86_64, x86
 - Primary tested ABI: arm64-v8a
-- Android 16 KB page compatibility must be tested.
+- Android 16 KB page compatibility is verified by 0x4000 ELF segment alignment
+  for the 64-bit native libraries.
 
 ### iOS
 

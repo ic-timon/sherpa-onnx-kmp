@@ -82,3 +82,23 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   fi
   cp -f "$cache/$onnxruntime_name" "/tmp/$onnxruntime_name"
 fi
+
+if [[ "${SHERPA_ONNX_KMP_FETCH_ANDROID:-0}" == "1" ]]; then
+  android_name=onnxruntime-android-1.28.2.zip
+  android_hash=01518867f78241138b6aa25925802e843a4fa9085af8d303d49e35bbb52aff4d
+  if [[ ! -f "$cache/$android_name" ]] || \
+     [[ "$(sha256 "$cache/$android_name")" != "$android_hash" ]]; then
+    if command -v gh >/dev/null 2>&1; then
+      gh release download v1.28.2 \
+        --repo csukuangfj/onnxruntime-libs \
+        --pattern "$android_name" \
+        --dir "$cache" \
+        --clobber
+    else
+      download \
+        "https://github.com/csukuangfj/onnxruntime-libs/releases/download/v1.28.2/$android_name" \
+        "$cache/$android_name" "$android_hash"
+    fi
+  fi
+  cp -f "$cache/$android_name" "/tmp/$android_name"
+fi

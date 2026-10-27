@@ -37,3 +37,9 @@ test-models/
 *.ort
 *.rknn
 *.om
+
+# Downloaded Android device-test assets
+sherpa-onnx-kmp/src/androidDeviceTest/assets/models/
+
+# Native libraries are assembled from pinned sources during the build
+sherpa-onnx-kmp/src/androidMain/jniLibs/**/*.so

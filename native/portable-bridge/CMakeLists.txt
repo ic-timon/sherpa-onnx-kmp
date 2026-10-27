@@ -28,6 +28,8 @@ target_include_directories(sherpa-onnx-portable-bridge
 set_target_properties(sherpa-onnx-portable-bridge PROPERTIES
   CXX_VISIBILITY_PRESET hidden
   VISIBILITY_INLINES_HIDDEN YES
+  LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+  RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
 )
 target_compile_definitions(sherpa-onnx-portable-bridge
   PRIVATE

@@ -1,3 +1,21 @@
+diff --git a/sherpa-onnx/csrc/offline-recognizer-funasr-nano-impl.cc b/sherpa-onnx/csrc/offline-recognizer-funasr-nano-impl.cc
+index 93374c0f..241d7294 100644
+--- a/sherpa-onnx/csrc/offline-recognizer-funasr-nano-impl.cc
++++ b/sherpa-onnx/csrc/offline-recognizer-funasr-nano-impl.cc
+@@ -350,11 +350,8 @@ int64_t OfflineRecognizerFunASRNanoImpl::SampleTokenWithTemperatureAndTopP(
+   }
+   if (top_p > 1.0f) top_p = 1.0f;
+
+-  thread_local std::vector<float> probs;
+-  thread_local std::vector<int32_t> idx;
+-
+-  probs.resize(vocab_size);
+-  idx.resize(vocab_size);
++  std::vector<float> probs(vocab_size);
++  std::vector<int32_t> idx(vocab_size);
+
+   float max_logit = -std::numeric_limits<float>::infinity();
+   bool found_valid = false;
 diff --git a/sherpa-onnx/csrc/parse-options.cc b/sherpa-onnx/csrc/parse-options.cc
 index 861b6e80..30cb9675 100644
 --- a/sherpa-onnx/csrc/parse-options.cc
@@ -5,7 +23,7 @@ index 861b6e80..30cb9675 100644
 @@ -570,6 +570,89 @@ bool ParseOptions::SetOption(const std::string &key, const std::string &value,
    return true;
  }
- 
+
 +bool ParseOptions::TrySetOption(const std::string &key,
 +                                 const std::string &value,
 +                                 std::string *error) {
@@ -91,7 +109,7 @@ index 861b6e80..30cb9675 100644
 +
  bool ParseOptions::ToBool(std::string str) const {
    std::transform(str.begin(), str.end(), str.begin(), ::tolower);
- 
+
 diff --git a/sherpa-onnx/csrc/parse-options.h b/sherpa-onnx/csrc/parse-options.h
 index 615ee7d3..2eb922ac 100644
 --- a/sherpa-onnx/csrc/parse-options.h
@@ -99,7 +117,7 @@ index 615ee7d3..2eb922ac 100644
 @@ -104,6 +104,17 @@ class ParseOptions {
    /// program.
    void ReadConfigFile(const std::string &filename);
- 
+
 +  /**
 +   * Set an option without terminating the process on invalid input.
 +   *
@@ -113,4 +131,4 @@ index 615ee7d3..2eb922ac 100644
 +
    /// Number of positional parameters (c.f. argc-1).
    int NumArgs() const;
- 
+
