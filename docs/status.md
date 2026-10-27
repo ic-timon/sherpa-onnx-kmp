@@ -11,6 +11,7 @@ Last updated: 2026-10-27
 - Public contract layer compiles for JVM, JS, iOS simulator, macOS arm64,
   Linux x64/arm64, and Windows x64.
 - JVM and JS Node contract tests pass.
+- v0.1.0 foundation contract layer is ready for release.
 - No native transport or Portable Bridge implementation yet.
 - No upstream change has been proposed yet.
 
