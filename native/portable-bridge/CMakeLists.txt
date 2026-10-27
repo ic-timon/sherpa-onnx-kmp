@@ -45,6 +45,36 @@ set_target_properties(sherpa-onnx-portable-bridge PROPERTIES
   OUTPUT_NAME sherpa-onnx-portable-bridge
 )
 
+add_library(sherpa-onnx-portable-bridge-static STATIC
+  src/bridge.cc
+  src/sherpa_backend.cc
+)
+target_include_directories(sherpa-onnx-portable-bridge-static
+  PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+  PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${SHERPA_ONNX_SOURCE_DIR}
+)
+set_target_properties(sherpa-onnx-portable-bridge-static PROPERTIES
+  CXX_VISIBILITY_PRESET hidden
+  VISIBILITY_INLINES_HIDDEN YES
+  ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+)
+target_compile_definitions(sherpa-onnx-portable-bridge-static
+  PRIVATE
+    SHERPA_ONNX_PORTABLE_BRIDGE_BUILD=1
+    SHERPA_ONNX_BRIDGE_WITH_SHERPA=1
+)
+target_link_libraries(sherpa-onnx-portable-bridge-static
+  PRIVATE
+    nlohmann_json::nlohmann_json
+    sherpa-onnx-core
+)
+set_target_properties(sherpa-onnx-portable-bridge-static PROPERTIES
+  OUTPUT_NAME sherpa-onnx-portable-bridge
+)
+
 add_executable(sherpa-onnx-portable-bridge-cli tools/bridge_cli.cc)
 target_include_directories(sherpa-onnx-portable-bridge-cli
   PRIVATE

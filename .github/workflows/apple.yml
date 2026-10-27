@@ -1,0 +1,79 @@
+name: apple
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/apple.yml'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'native/**'
+      - 'patches/**'
+      - 'samples/apple/**'
+      - 'scripts/**'
+      - 'sherpa-onnx-kmp/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apple.yml'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'native/**'
+      - 'patches/**'
+      - 'samples/apple/**'
+      - 'scripts/**'
+      - 'sherpa-onnx-kmp/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apple-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apple:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Cache Apple native dependencies and builds
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/sherpa-onnx-kmp
+            build/apple
+            build/upstream
+            ~/.konan
+          key: apple-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch', 'native/**', 'sherpa-onnx-kmp/build.gradle.kts') }}
+      - name: Build Apple native dependencies
+        run: ./scripts/build-apple-native.sh all
+      - name: Prepare pinned model
+        run: ./scripts/prepare-apple-sample-assets.sh
+      - name: Run macOS native integration test
+        run: |
+          export SHERPA_ONNX_KMP_TEST_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/models/sherpa-onnx-nemo-ctc-fa-shenava-rizeh-pizeh-v1.0-non-streaming-int8-2026-06-26"
+          ./gradlew :sherpa-onnx-kmp:macosArm64Test --stacktrace
+      - name: Run iOS simulator integration test
+        run: |
+          export SHERPA_ONNX_KMP_TEST_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/models/sherpa-onnx-nemo-ctc-fa-shenava-rizeh-pizeh-v1.0-non-streaming-int8-2026-06-26"
+          device=$(xcrun simctl list devices available -j | jq -r '
+            first(.devices[][] |
+              select(.isAvailable and (.name | startswith("iPhone"))) | .name) // empty
+          ')
+          if [[ -z "$device" ]]; then
+            echo "No available iPhone simulator" >&2
+            exit 1
+          fi
+          ./gradlew :sherpa-onnx-kmp:iosSimulatorArm64Test --device "$device" --stacktrace
+      - name: Build and verify XCFramework
+        run: SHERPA_ONNX_KMP_SKIP_NATIVE=1 ./scripts/package-apple-xcframework.sh 0.4.0
+      - name: Build and run Apple samples
+        run: ./scripts/test-apple-samples.sh 0.4.0

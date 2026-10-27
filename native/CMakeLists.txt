@@ -21,6 +21,13 @@ set(SHERPA_ONNX_ENABLE_TTS OFF CACHE BOOL "" FORCE)
 set(SHERPA_ONNX_ENABLE_SPEAKER_DIARIZATION OFF CACHE BOOL "" FORCE)
 set(SHERPA_ONNX_ENABLE_BINARY OFF CACHE BOOL "" FORCE)
 
+# v0.4 Apple builds support CPU only. The static macOS ONNX Runtime package
+# also does not include the CoreML provider factory, so keep the bridge
+# self-contained instead of leaving an unresolved CoreML symbol.
+if(APPLE AND NOT BUILD_SHARED_LIBS)
+  add_compile_definitions(SHERPA_ONNX_DISABLE_COREML)
+endif()
+
 set(SHERPA_ONNX_SOURCE_DIR "" CACHE PATH
     "Path to a sherpa-onnx source tree with the TrySetOption patch applied")
 

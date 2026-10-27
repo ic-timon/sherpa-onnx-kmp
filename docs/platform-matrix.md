@@ -15,14 +15,19 @@
 ### iOS
 
 - KMP targets: `iosArm64`, `iosSimulatorArm64`
-- Optional: `iosX64` for Intel Mac simulator use
 - Transport: Native cinterop
-- Deployment target: to be finalized; align with upstream Apple artifacts
+- Deployment target: iOS 15
+- Distribution: self-contained `SherpaOnnxKmp.xcframework`
+- Providers: CPU
+- Physical-device execution: release gate, pending
 
 ### macOS
 
 - KMP target: `macosArm64`
 - Transport: Native cinterop
+- Deployment target: macOS 13
+- Distribution: self-contained `SherpaOnnxKmp.xcframework`
+- Providers: CPU
 - Intel macOS: JVM target, not Kotlin/Native `macosX64`
 
 ### Linux
@@ -62,6 +67,7 @@
 - Windows ARM64 Kotlin/Native
 - Linux ARM32
 - Kotlin/Native `macosX64` as a core release target
+- Kotlin/Native `iosX64` as a core release target
 
 ## Provider policy
 

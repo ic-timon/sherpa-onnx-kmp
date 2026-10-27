@@ -32,7 +32,8 @@ std::unique_ptr<sherpa_onnx::OfflineRecognizer> CreateRecognizer(
 
   if (!config.Validate()) {
     SetError(error, SHERPA_ONNX_BRIDGE_INVALID_ARGUMENT,
-             "offline-asr configuration validation failed");
+             "offline-asr configuration validation failed: " +
+                 config.ToString());
     return nullptr;
   }
 

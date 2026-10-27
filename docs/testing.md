@@ -46,6 +46,7 @@ C++ tests for:
 
 - Android emulator and real device
 - iOS simulator and real device
+- Apple Silicon macOS
 - macOS arm64
 - Linux x64/arm64
 - Windows x64
@@ -56,6 +57,7 @@ C++ tests for:
 ### Packaging
 
 - Android AAR contents and duplicate-library detection
+- Apple XCFramework slices, code signatures, symbol counts, and dependency audit
 - Apple XCFramework embedding and code signing
 - Linux/Windows runtime dependency inspection
 - JVM native-library extraction
@@ -79,5 +81,7 @@ The current development host is an Apple Silicon Mac with:
 - Node, Chrome, Firefox, and Playwright
 
 It can directly test Android emulator, iOS simulator, macOS arm64 native, JVM,
-and web. It cannot run Windows, Linux native, or physical mobile devices.
-Emscripten must be installed before web integration builds.
+and web. It cannot run Windows, Linux native, or physical mobile devices. The Apple
+device slice is compiled and linked, but physical iPhone execution remains a
+documented release gate. Emscripten must be installed before web integration
+builds.

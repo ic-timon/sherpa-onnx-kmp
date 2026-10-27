@@ -1,0 +1,4 @@
+headers = sherpa-onnx-portable-bridge.h
+headerFilter = sherpa-onnx-portable-bridge.h
+package = com.k2fsa.sherpa.onnx.kmp.cinterop
+language = C

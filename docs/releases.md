@@ -17,3 +17,6 @@ Every release must satisfy the acceptance criteria in `roadmap.md`.
 - Tags use `vMAJOR.MINOR.PATCH`.
 - Tags must point at commits on `main`.
 - Release notes link to the roadmap section and the relevant ADR.
+- Apple releases attach the signed XCFramework ZIP and SHA-256 checksum.
+- A release with an unmet physical-device gate is documented as preview and must
+  not be presented as stable.

@@ -51,3 +51,15 @@ build/native/portable-bridge/tests/sherpa-onnx-portable-bridge-test
 ./gradlew :sherpa-onnx-kmp:assemble
 ./scripts/check-android-aar.sh
 ```
+
+## Apple
+
+```bash
+./scripts/build-apple-native.sh all
+./scripts/package-apple-xcframework.sh 0.4.0
+./scripts/test-apple-samples.sh 0.4.0
+```
+
+The Apple build uses `sherpa-onnx-portable-bridge-static` and creates one
+aggregate static archive per architecture with the bridge, sherpa-onnx, and
+ONNX Runtime. See `docs/apple-transport.md`.

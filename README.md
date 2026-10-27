@@ -3,7 +3,7 @@
 Kotlin Multiplatform bindings and a portable native bridge for
 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx).
 
-> Status: v0.3.0 JVM and Android integration is being released.
+> Status: v0.4.0 Apple integration is available as a preview.
 
 ## Goal
 
@@ -48,6 +48,17 @@ Java, Kotlin, and Swift APIs remain unchanged.
 
 See [Releases](https://github.com/ic-timon/sherpa-onnx-kmp/releases) for published
 versions and [docs/roadmap.md](docs/roadmap.md) for the release gates.
+
+## Apple
+
+- Targets: `iosArm64`, `iosSimulatorArm64`, and `macosArm64`.
+- Transport: Kotlin/Native cinterop over the Portable Bridge.
+- Distribution: one self-contained XCFramework containing the bridge,
+  sherpa-onnx, and ONNX Runtime.
+- Minimum deployment targets: iOS 15 and macOS 13.
+- Samples: [samples/apple/README.md](samples/apple/README.md)
+- Apple details: [docs/apple-transport.md](docs/apple-transport.md)
+- Release inventory: [docs/release-0.4.0.md](docs/release-0.4.0.md)
 
 ## JVM and Android
 

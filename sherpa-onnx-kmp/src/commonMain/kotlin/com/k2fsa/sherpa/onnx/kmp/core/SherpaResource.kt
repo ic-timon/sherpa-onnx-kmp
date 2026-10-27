@@ -8,6 +8,7 @@ package com.k2fsa.sherpa.onnx.kmp
  * collection to release native memory.
  */
 public interface SherpaResource {
+    @Throws(Throwable::class)
     public suspend fun close()
 }
 
