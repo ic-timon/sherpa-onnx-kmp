@@ -37,6 +37,8 @@ jobs:
   apple:
     runs-on: macos-15
     timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
