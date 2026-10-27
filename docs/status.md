@@ -17,7 +17,9 @@ Last updated: 2026-10-28
 - Android AAR is built for arm64-v8a, armeabi-v7a, x86, and x86_64.
 - JVM CLI and Android arm64 emulator tests pass with a pinned model.
 - Android sample app builds.
-- v0.4.0 Apple integration is implemented for iOS and Apple Silicon macOS.
+- v0.4.0 Apple integration is released as a preview for iOS and Apple Silicon
+  macOS. The prerelease attaches the signed self-contained
+  `SherpaOnnxKmp.xcframework.zip` and its SHA-256 checksum.
 - Kotlin/Native cinterop, `FileModelStore`, and `BundleModelStore` are working.
 - macOS arm64 and iOS Simulator transcribe the pinned model.
 - The self-contained Apple XCFramework builds, signs, and contains no external
