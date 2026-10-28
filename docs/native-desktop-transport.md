@@ -93,6 +93,7 @@ and the shared contract suite still runs.
   `libonnxruntime.so` next to the executable, or in a sibling `lib/` directory.
   The Kotlin/Native binary sets `$ORIGIN` and `$ORIGIN/lib` rpath entries. The
   effective glibc floor is the glibc the bridge was compiled against.
-- **Windows**: ship `sherpa-onnx-portable-bridge.dll` next to the executable, or
-  in a `lib/` directory reachable through the executable's directory. The
-  Kotlin/Native binary already sets `$ORIGIN` and `$ORIGIN/lib` rpath entries.
+- **Windows**: ship `sherpa-onnx-portable-bridge.dll` next to the executable.
+  Windows has no rpath; the loader searches the executable's directory and
+  `PATH`. No MinGW C++ runtime DLL is needed because the bridge is a C ABI and
+  the Kotlin/Native binary does not link `-lstdc++`.

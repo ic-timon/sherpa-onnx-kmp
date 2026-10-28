@@ -63,8 +63,13 @@ Rationale: MSVC and MinGW do not agree on C++ runtime symbol mangling and
 allocation ownership across a static archive boundary. A DLL with a plain C ABI
 avoids that class of defect. Windows also has no `libtool -static` equivalent,
 and `ar`-based merging of MSVC-produced archives is not reliable, so DLlexport
-is the lower-risk path. Kotlin/Native adds `-Wl,-rpath,$ORIGIN` for the
-executable layout and the `lib/` subdirectory.
+is the lower-risk path.
+
+The Kotlin/Native binary links only the import library. It must not link
+`-lstdc++`: the bridge is a C ABI, and pulling in the MinGW C++ runtime makes the
+executable depend on `libstdc++-6.dll`, which a clean machine does not have.
+Windows has no rpath either, so the loader finds the DLL in the executable's own
+directory or on `PATH`; CI stages it next to the test binary.
 
 ## Consequences
 

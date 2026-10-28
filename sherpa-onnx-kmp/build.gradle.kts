@@ -183,17 +183,17 @@ kotlin {
             "-lsherpa-onnx-kmp-native-desktop",
         ),
     )
-    // Windows links a DLL plus its import library and has no group semantics.
-    // The rpath entries let a host application find the DLL next to itself or
-    // in a sibling `lib/` directory.
+    // Windows links the bridge DLL through its import library. The bridge is a
+    // plain C ABI, so the Kotlin/Native binary must not pull in the MinGW C++
+    // runtime: `-lstdc++` would make the test executable depend on
+    // `libstdc++-6.dll`, which is absent on a clean runner and crashes the
+    // process at load time. Windows has no rpath either; the loader searches the
+    // executable's own directory, which is where CI stages the DLL.
     configureNativeDesktopInterop(
         target = mingwX64Target,
         nativeDirectory = "windows-x64",
         linkerOptions = listOf(
-            "-Wl,-rpath,\$ORIGIN",
-            "-Wl,-rpath,\$ORIGIN/lib",
             "-lsherpa-onnx-portable-bridge",
-            "-lstdc++",
         ),
     )
 
