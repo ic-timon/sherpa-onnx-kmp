@@ -147,7 +147,6 @@ kotlin {
     fun configureNativeDesktopInterop(
         target: KotlinNativeTarget,
         nativeDirectory: String,
-        sharedLibraries: Boolean,
         linkerOptions: List<String>,
     ) {
         target.compilations.getByName("main").cinterops.create("portableBridge") {
@@ -157,34 +156,50 @@ kotlin {
         val nativeLib = rootProject.layout.projectDirectory
             .dir("build/native-desktop/$nativeDirectory/lib")
         target.binaries.all {
-            if (sharedLibraries) {
-                // Dynamic linking resolves the bridge and ONNX Runtime at load
-                // time, so the linker needs an rpath to the bundled directory.
-                linkerOpts("-Wl,-rpath,\$ORIGIN")
-                linkerOpts("-Wl,-rpath,\$ORIGIN/lib")
-            }
             linkerOpts("-L${nativeLib.asFile.absolutePath}")
             linkerOpts(linkerOptions)
         }
     }
 
+    // Linux links a single aggregate archive that already contains ONNX Runtime.
+    // The archive is a static C++ graph with mutual references, so the bridge
+    // and the C++ runtime must be resolved in one group; otherwise the linker
+    // drops ORT members before their C++ dependencies are known.
     configureNativeDesktopInterop(
         target = linuxX64Target,
         nativeDirectory = "linux-x64",
-        sharedLibraries = false,
-        linkerOptions = listOf("-lsherpa-onnx-kmp-native-desktop", "-lstdc++", "-lm", "-ldl", "-lpthread"),
+        linkerOptions = listOf(
+            "-Wl,--start-group",
+            "-lsherpa-onnx-kmp-native-desktop",
+            "-Wl,--end-group",
+            "-lstdc++",
+            "-lm",
+            "-ldl",
+            "-lpthread",
+        ),
     )
     configureNativeDesktopInterop(
         target = linuxArm64Target,
         nativeDirectory = "linux-arm64",
-        sharedLibraries = false,
-        linkerOptions = listOf("-lsherpa-onnx-kmp-native-desktop", "-lstdc++", "-lm", "-ldl", "-lpthread"),
+        linkerOptions = listOf(
+            "-Wl,--start-group",
+            "-lsherpa-onnx-kmp-native-desktop",
+            "-Wl,--end-group",
+            "-lstdc++",
+            "-lm",
+            "-ldl",
+            "-lpthread",
+        ),
     )
+    // Windows links a DLL plus its import library and has no group semantics.
+    // The rpath entries let a host application find the DLL next to itself or
+    // in a sibling `lib/` directory.
     configureNativeDesktopInterop(
         target = mingwX64Target,
         nativeDirectory = "windows-x64",
-        sharedLibraries = true,
         linkerOptions = listOf(
+            "-Wl,-rpath,\$ORIGIN",
+            "-Wl,-rpath,\$ORIGIN/lib",
             "-lsherpa-onnx-portable-bridge",
             "-lstdc++",
         ),

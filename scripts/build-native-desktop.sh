@@ -164,21 +164,18 @@ build_windows_x64() {
   local build_dir="$desktop_root/windows-x64"
   export SHERPA_ONNXRUNTIME_LIB_DIR="$staged/lib"
   export SHERPA_ONNXRUNTIME_INCLUDE_DIR="$staged/include"
-  # Windows links the bridge as a shared library. ONNX Runtime is static, so the
-  # bridge carries ORT internally and only the bridge DLL ships next to the app.
-  #
-  # The toolchain must be MSVC: sherpa-onnx injects MSVC-only flags (/wd4018,
-  # /bigobj, ...) on WIN32 unconditionally, so a MinGW g++ build fails at the
-  # first compile. See ADR 0007.
+  # The pinned Windows ONNX Runtime package is the `MT` (static CRT) build, so
+  # the whole tree must use the static runtime. Mixing /MD and /MT fails at link
+  # time with LNK2038 across libcpmt/msvcprt.
   local generator="Visual Studio 17 2022"
   local arch_flag=(-A x64)
   if ! command -v cmake >/dev/null 2>&1; then
     echo "cmake is required" >&2
     return 1
   fi
-  # `-G` with the VS generator writes a multi-config build tree.
   cmake -S native -B "$build_dir" -G "$generator" "${arch_flag[@]}" \
     -DCMAKE_CXX_STANDARD=17 \
+    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded \
     -DSHERPA_ONNX_SOURCE_DIR="$source_dir" \
     -DSHERPA_ONNX_KMP_BUILD_JNI=OFF \
     -DSHERPA_ONNX_KMP_BUILD_TESTS=OFF \
