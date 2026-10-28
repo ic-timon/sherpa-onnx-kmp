@@ -102,7 +102,9 @@ jobs:
             exit 1
           fi
           mkdir -p "$bin_dir/lib"
-          for so in libsherpa-onnx-kmp-native-desktop.so libonnxruntime.so; do
+          for so in libsherpa-onnx-kmp-native-desktop.so \
+                    libsherpa-onnx-portable-bridge.so \
+                    libonnxruntime.so; do
             cp -f "build/native-desktop/linux-x64/lib/$so" "$bin_dir/"
             cp -f "build/native-desktop/linux-x64/lib/$so" "$bin_dir/lib/"
           done
@@ -180,7 +182,9 @@ jobs:
           # points next to the binary, so stage both libraries there.
           bin_dir=$(dirname "$binary")
           mkdir -p "$bin_dir/lib"
-          for so in libsherpa-onnx-kmp-native-desktop.so libonnxruntime.so; do
+          for so in libsherpa-onnx-kmp-native-desktop.so \
+                    libsherpa-onnx-portable-bridge.so \
+                    libonnxruntime.so; do
             cp -f "build/native-desktop/linux-arm64/lib/$so" "$bin_dir/"
             cp -f "build/native-desktop/linux-arm64/lib/$so" "$bin_dir/lib/"
           done

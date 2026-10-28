@@ -99,9 +99,12 @@ if(EMSCRIPTEN)
       nlohmann_json::nlohmann_json
       sherpa-onnx-core
   )
+  # Emscripten does not resolve exports through ELF visibility: `-sEXPORTED_FUNCTIONS`
+  # is the only thing that decides what the Wasm module exports. Setting
+  # `CXX_VISIBILITY_PRESET hidden` here would hide the bridge's `extern "C"`
+  # entry points from the export machinery and produce a module that exports
+  # nothing, so it is deliberately not set for this target.
   set_target_properties(sherpa-onnx-bridge-web PROPERTIES
-    CXX_VISIBILITY_PRESET hidden
-    VISIBILITY_INLINES_HIDDEN YES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/web
     OUTPUT_NAME sherpa-onnx-bridge
     SUFFIX ".js"
@@ -111,26 +114,35 @@ if(EMSCRIPTEN)
   # plus the two memory helpers the Kotlin/JS worker needs to copy audio into
   # the Wasm heap. Capability discovery on the Web must reflect this list.
   #
-  # The list must be one comma-separated token with no whitespace. A quoted
-  # string containing single quotes survives shell parsing but CMake strips the
-  # quotes, leaving a malformed list that silently exports nothing.
+  # The options go through `SHELL:` so each one arrives at `emcc` as a single
+  # argument with its commas intact. Without it, CMake re-parses the comma
+  # separated value and emcc receives a truncated `-sEXPORTED_FUNCTIONS`, which
+  # produces a module with an empty export table instead of failing loudly.
   set(SHERPA_ONNX_BRIDGE_WEB_EXPORTS
     "_SherpaOnnxBridgeAbiVersion,_SherpaOnnxBridgeInfoJson,_SherpaOnnxBridgeCreate,_SherpaOnnxBridgeCall,_SherpaOnnxBridgePushAudio,_SherpaOnnxBridgeDestroy,_SherpaOnnxBridgeFree,_malloc,_free")
 
   target_link_options(sherpa-onnx-bridge-web PRIVATE
-    -O3
-    -sWASM=1
-    -sMODULARIZE=1
-    -sEXPORT_NAME=createSherpaOnnxBridgeModule
-    -sEXPORT_ES6=0
-    -sENVIRONMENT=worker
-    -sALLOW_MEMORY_GROWTH=1
-    -sINITIAL_MEMORY=268435456
-    -sMAXIMUM_MEMORY=2147483648
-    -sFILESYSTEM=1
-    -sASSERTIONS=0
-    "-sEXPORTED_FUNCTIONS=${SHERPA_ONNX_BRIDGE_WEB_EXPORTS}"
-    "-sEXPORTED_RUNTIME_METHODS=UTF8ToString,getValue,setValue,FS"
+    "SHELL:-O3"
+    "SHELL:-sWASM=1"
+    "SHELL:-sMODULARIZE=1"
+    "SHELL:-sEXPORT_NAME=createSherpaOnnxBridgeModule"
+    "SHELL:-sEXPORT_ES6=0"
+    "SHELL:-sENVIRONMENT=worker"
+    "SHELL:-sALLOW_MEMORY_GROWTH=1"
+    "SHELL:-sINITIAL_MEMORY=268435456"
+    "SHELL:-sMAXIMUM_MEMORY=2147483648"
+    "SHELL:-sFILESYSTEM=1"
+    "SHELL:-sASSERTIONS=0"
+    "SHELL:-sEXPORTED_FUNCTIONS=${SHERPA_ONNX_BRIDGE_WEB_EXPORTS}"
+    "SHELL:-sEXPORTED_RUNTIME_METHODS=UTF8ToString,getValue,setValue,FS"
+    # `-O3` turns on import/export renaming, which rewrites every Wasm export
+    # to a single letter (`P`, `Q`, ...). The bridge C ABI is a published
+    # contract: the worker resolves `_SherpaOnnxBridge*` names, an external
+    # consumer may inspect the module, and capability discovery reports this
+    # exact set. Renaming it would make the export table unauditable and tie
+    # the artifact to one Emscripten version's mangling scheme.
+    "SHELL:-sMINIFY_WASM_IMPORTS_AND_EXPORTS=0"
+    "SHELL:-sMINIFY_WASM_EXPORT_NAMES=0"
   )
 endif()
 

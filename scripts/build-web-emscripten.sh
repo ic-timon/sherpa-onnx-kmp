@@ -96,6 +96,8 @@ if [[ -n "$wasm_symbols" ]]; then
     free; do
     if ! grep -q -- "- func\[[0-9]*\] <$symbol>" "$wasm_symbols"; then
       echo "Wasm module does not export $symbol" >&2
+      # A single-letter export table means Emscripten renamed the C ABI, which
+      # `-sMINIFY_WASM_IMPORTS_AND_EXPORTS=0` in the CMake target prevents.
       echo "Actual exports:" >&2
       sed -n '/^Export\[/,$p' "$wasm_symbols" | head -30 >&2
       exit 1
@@ -103,3 +105,22 @@ if [[ -n "$wasm_symbols" ]]; then
   done
   echo "Wasm export inspection: OK"
 fi
+
+# The worker never calls the Wasm exports directly: it calls the `_`-prefixed
+# properties Emscripten's JS glue assigns. Inspecting the Wasm table alone would
+# pass even if the glue stopped exposing an entry point, so assert the consumer
+# surface too.
+for symbol in \
+  _SherpaOnnxBridgeAbiVersion \
+  _SherpaOnnxBridgeInfoJson \
+  _SherpaOnnxBridgeCreate \
+  _SherpaOnnxBridgeCall \
+  _SherpaOnnxBridgePushAudio \
+  _SherpaOnnxBridgeDestroy \
+  _SherpaOnnxBridgeFree; do
+  if ! grep -q "$symbol" "$out_dir/sherpa-onnx-bridge.js"; then
+    echo "JS glue does not expose $symbol" >&2
+    exit 1
+  fi
+done
+echo "JS glue inspection: OK"

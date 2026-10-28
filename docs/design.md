@@ -289,6 +289,8 @@ The core library consumes and produces Float32 PCM.
 - Apple: XCFramework with static bridge, sherpa-onnx, and ONNX Runtime.
 - Linux native: one shared bridge library per architecture,
   `libsherpa-onnx-kmp-native-desktop.so`, with `libonnxruntime.so` alongside.
+  The packaged set also carries `libsherpa-onnx-portable-bridge.so`, the
+  bridge's `SONAME`, which is what the loader resolves at runtime.
 - Windows native: `sherpa-onnx-portable-bridge.dll` with static ONNX Runtime.
 - JVM: JNI transport plus platform native-library jars.
 - Web: Kotlin/JS artifact plus Emscripten Wasm and worker assets.

@@ -14,6 +14,10 @@ cinterop transport that Apple uses. Only linking and packaging differ.
     from the pinned `glibc2_17` shared build.
   - `linux-arm64`: same pair, built by cross-compiling with the aarch64
     toolchain.
+- `libsherpa-onnx-portable-bridge.so`
+  - The bridge's `SONAME` copy. Required at runtime: the loader resolves this
+    name even though linking used the `libsherpa-onnx-kmp-native-desktop` alias.
+    Shipping it is not optional.
 - `libonnxruntime.so`
   - Pinned ONNX Runtime for both Linux architectures. It is a sibling of the
     bridge, not embedded; see ADR 0008.

@@ -95,6 +95,21 @@ inspect_linux_shared_library() {
     return 1
   fi
 
+  # The SONAME is what a consumer's `DT_NEEDED` records, so the packaged set
+  # must contain a file with that exact name. Without this check a renamed copy
+  # links fine and then fails with exit code 127 at test time.
+  local soname
+  soname=$("$readelf_bin" -d "$library" | sed -n 's/.*SONAME.*\[\(.*\)\].*/\1/p')
+  if [[ -z "$soname" ]]; then
+    echo "Bridge does not declare a SONAME" >&2
+    return 1
+  fi
+  if [[ ! -f "$build_dir/lib/$soname" ]]; then
+    echo "Packaged bridge is missing its SONAME file: $soname" >&2
+    ls -l "$build_dir/lib" >&2
+    return 1
+  fi
+
   # `libonnxruntime.so` lives in the extracted ONNX Runtime package, not in the
   # CMake build tree. Copy it beside the bridge so the pair ships together and
   # the rpath lookup next to the executable resolves it.
@@ -115,6 +130,12 @@ inspect_linux_shared_library() {
 
 # Move the bridge shared library to a stable name that the Kotlin build can
 # depend on, independent of CMake's per-target output layout.
+#
+# The copy keeps the CMake name as well, because that name is the library's
+# SONAME (no `SOVERSION` is set): a consumer linked against the Kotlin alias
+# records `libsherpa-onnx-portable-bridge.so` as its `DT_NEEDED` entry, so the
+# original name must exist on the loader path or the executable fails with
+# `cannot open shared object file`. Both names are therefore shipped.
 package_linux_shared_library() {
   local build_dir=$1
   local library
@@ -125,7 +146,9 @@ package_linux_shared_library() {
   fi
   mkdir -p "$build_dir/lib"
   cp -f "$library" "$build_dir/lib/libsherpa-onnx-kmp-native-desktop.so"
+  cp -f "$library" "$build_dir/lib/libsherpa-onnx-portable-bridge.so"
   printf 'Linux bridge: %s\n' "$build_dir/lib/libsherpa-onnx-kmp-native-desktop.so"
+  printf 'Linux bridge SONAME: %s\n' "$build_dir/lib/libsherpa-onnx-portable-bridge.so"
 }
 
 build_linux_x64() {

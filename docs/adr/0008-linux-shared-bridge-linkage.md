@@ -48,8 +48,10 @@ Linux builds and ships a shared bridge library, matching the Windows model:
 
 ```text
 build/native-desktop/linux-x64/lib/libsherpa-onnx-kmp-native-desktop.so
+build/native-desktop/linux-x64/lib/libsherpa-onnx-portable-bridge.so
 build/native-desktop/linux-x64/lib/libonnxruntime.so
 build/native-desktop/linux-arm64/lib/libsherpa-onnx-kmp-native-desktop.so
+build/native-desktop/linux-arm64/lib/libsherpa-onnx-portable-bridge.so
 build/native-desktop/linux-arm64/lib/libonnxruntime.so
 ```
 
@@ -86,6 +88,21 @@ path and needs no assumption. The cost is one extra file per architecture, and
 CI enforces that the bridge records a `libonnxruntime` `NEEDED` entry so the
 pair can never drift apart.
 
+### The bridge ships under two names
+
+The bridge is copied to both CMake's output name and the Kotlin alias:
+
+```text
+libsherpa-onnx-kmp-native-desktop.so   # what `-l` resolves
+libsherpa-onnx-portable-bridge.so      # the bridge's SONAME
+```
+
+Only the first is needed to link, but the loader resolves `DT_NEEDED`, which is
+the `SONAME` recorded inside the library, not the `-l` name. Shipping only the
+alias linked cleanly and then failed at process start with exit code 127. CI
+asserts that the packaged directory contains the exact `SONAME` of the bridge
+that was just built, so a rename cannot silently break a consumer again.
+
 ## Consequences
 
 - Linux and Windows now share one linkage model: a shared bridge with a plain C
@@ -95,9 +112,9 @@ pair can never drift apart.
 - The static archive merge (`merge_linux_archive`, `sherpa_static_archives`)
   is deleted. It encoded an approach that cannot work, and keeping it would
   invite reintroduction.
-- Host applications must ship `libsherpa-onnx-kmp-native-desktop.so` and
-  `libonnxruntime.so` next to the executable or in a sibling `lib/` directory.
-  The rpath entries cover both.
+- Host applications must ship `libsherpa-onnx-kmp-native-desktop.so`,
+  `libsherpa-onnx-portable-bridge.so`, and `libonnxruntime.so` next to the
+  executable or in a sibling `lib/` directory. The rpath entries cover both.
 - CI asserts the exported C ABI and that the bridge records a `libonnxruntime`
   `NEEDED` entry. A missing or renamed runtime fails the build rather than the
   first inference call.
