@@ -1,3 +1,30 @@
+set(SHERPA_ONNX_BRIDGE_SHERPA_SOURCES
+  src/sherpa_common.cc
+  src/sherpa_offline_asr.cc
+  src/sherpa_online_asr.cc
+  src/sherpa_vad.cc
+  src/sherpa_tts.cc
+  src/sherpa_extras.cc
+  src/sherpa_factories.cc
+)
+
+# Upstream gates optional features with `add_definitions()` inside its own
+# directory scope, which a sibling target does not inherit. Re-publish those
+# flags here from the cache variables so the bridge's `#if` guards describe the
+# library it actually links.
+foreach(_flag
+    SHERPA_ONNX_ENABLE_TTS
+    SHERPA_ONNX_ENABLE_SPEAKER_DIARIZATION)
+  if(${_flag})
+    set(SHERPA_ONNX_BRIDGE_FEATURE_DEFINITIONS
+        ${SHERPA_ONNX_BRIDGE_FEATURE_DEFINITIONS} ${_flag}=1)
+  endif()
+endforeach()
+message(STATUS "Bridge feature definitions: ${SHERPA_ONNX_BRIDGE_FEATURE_DEFINITIONS}")
+
+# The registry-only core. It has no sherpa-onnx dependency, so the bridge unit
+# tests can exercise handle lifetime, nesting, and error envelopes without
+# loading a model. Test doubles are installed through SetFactoryForTesting().
 add_library(sherpa-onnx-portable-bridge-core STATIC
   src/bridge.cc
 )
@@ -16,7 +43,7 @@ target_compile_definitions(sherpa-onnx-portable-bridge-core
 
 add_library(sherpa-onnx-portable-bridge SHARED
   src/bridge.cc
-  src/sherpa_backend.cc
+  ${SHERPA_ONNX_BRIDGE_SHERPA_SOURCES}
 )
 target_include_directories(sherpa-onnx-portable-bridge
   PUBLIC
@@ -24,6 +51,7 @@ target_include_directories(sherpa-onnx-portable-bridge
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${SHERPA_ONNX_SOURCE_DIR}
+    ${ONNXRUNTIME_INCLUDE_DIR}
 )
 set_target_properties(sherpa-onnx-portable-bridge PROPERTIES
   CXX_VISIBILITY_PRESET hidden
@@ -35,6 +63,7 @@ target_compile_definitions(sherpa-onnx-portable-bridge
   PRIVATE
     SHERPA_ONNX_PORTABLE_BRIDGE_BUILD=1
     SHERPA_ONNX_BRIDGE_WITH_SHERPA=1
+    ${SHERPA_ONNX_BRIDGE_FEATURE_DEFINITIONS}
 )
 target_link_libraries(sherpa-onnx-portable-bridge
   PRIVATE
@@ -47,7 +76,7 @@ set_target_properties(sherpa-onnx-portable-bridge PROPERTIES
 
 add_library(sherpa-onnx-portable-bridge-static STATIC
   src/bridge.cc
-  src/sherpa_backend.cc
+  ${SHERPA_ONNX_BRIDGE_SHERPA_SOURCES}
 )
 target_include_directories(sherpa-onnx-portable-bridge-static
   PUBLIC
@@ -55,6 +84,7 @@ target_include_directories(sherpa-onnx-portable-bridge-static
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${SHERPA_ONNX_SOURCE_DIR}
+    ${ONNXRUNTIME_INCLUDE_DIR}
 )
 set_target_properties(sherpa-onnx-portable-bridge-static PROPERTIES
   CXX_VISIBILITY_PRESET hidden
@@ -65,6 +95,7 @@ target_compile_definitions(sherpa-onnx-portable-bridge-static
   PRIVATE
     SHERPA_ONNX_PORTABLE_BRIDGE_BUILD=1
     SHERPA_ONNX_BRIDGE_WITH_SHERPA=1
+    ${SHERPA_ONNX_BRIDGE_FEATURE_DEFINITIONS}
 )
 target_link_libraries(sherpa-onnx-portable-bridge-static
   PRIVATE
@@ -82,17 +113,22 @@ set_target_properties(sherpa-onnx-portable-bridge-static PROPERTIES
 # static link order, which a C++ archive graph needs; going through CMake keeps
 # every `target_link_libraries` edge intact.
 if(EMSCRIPTEN)
-  add_executable(sherpa-onnx-bridge-web src/bridge.cc src/sherpa_backend.cc)
+  add_executable(sherpa-onnx-bridge-web
+    src/bridge.cc
+    ${SHERPA_ONNX_BRIDGE_SHERPA_SOURCES}
+  )
   target_include_directories(sherpa-onnx-bridge-web
     PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/include
       ${CMAKE_CURRENT_SOURCE_DIR}/src
       ${SHERPA_ONNX_SOURCE_DIR}
+      ${ONNXRUNTIME_INCLUDE_DIR}
   )
   target_compile_definitions(sherpa-onnx-bridge-web
     PRIVATE
       SHERPA_ONNX_PORTABLE_BRIDGE_BUILD=1
       SHERPA_ONNX_BRIDGE_WITH_SHERPA=1
+      ${SHERPA_ONNX_BRIDGE_FEATURE_DEFINITIONS}
   )
   target_link_libraries(sherpa-onnx-bridge-web
     PRIVATE
@@ -119,11 +155,21 @@ if(EMSCRIPTEN)
   # separated value and emcc receives a truncated `-sEXPORTED_FUNCTIONS`, which
   # produces a module with an empty export table instead of failing loudly.
   set(SHERPA_ONNX_BRIDGE_WEB_EXPORTS
-    "_SherpaOnnxBridgeAbiVersion,_SherpaOnnxBridgeInfoJson,_SherpaOnnxBridgeCreate,_SherpaOnnxBridgeCall,_SherpaOnnxBridgePushAudio,_SherpaOnnxBridgeDestroy,_SherpaOnnxBridgeFree,_malloc,_free")
+    "_SherpaOnnxBridgeAbiVersion,_SherpaOnnxBridgeInfoJson,_SherpaOnnxBridgeCreate,_SherpaOnnxBridgeCall,_SherpaOnnxBridgePushAudio,_SherpaOnnxBridgePullAudio,_SherpaOnnxBridgeDestroy,_SherpaOnnxBridgeFree,_SherpaOnnxBridgeFreeAudio,_malloc,_free")
 
   target_link_options(sherpa-onnx-bridge-web PRIVATE
     "SHELL:-O3"
     "SHELL:-sWASM=1"
+    # sherpa-onnx recurses through the ONNX Runtime graph and its decoder
+    # loops; Emscripten's 64 KiB default stack overflows almost immediately on
+    # real inference. Upstream's WebAssembly targets reserve 10 MiB, so match
+    # them.
+    "SHELL:-sSTACK_SIZE=10485760"
+    # `int64_t` is used for bridge handles and by ONNX Runtime. Without BigInt,
+    # Emscripten's wasm32 ABI splits 64-bit values through the JS boundary in a
+    # way a direct `Module['_fn']` call does not reproduce, so the handle
+    # arrives truncated and the registry lookup fails.
+    "SHELL:-sWASM_BIGINT=1"
     "SHELL:-sMODULARIZE=1"
     "SHELL:-sEXPORT_NAME=createSherpaOnnxBridgeModule"
     "SHELL:-sEXPORT_ES6=0"
@@ -134,7 +180,12 @@ if(EMSCRIPTEN)
     "SHELL:-sFILESYSTEM=1"
     "SHELL:-sASSERTIONS=0"
     "SHELL:-sEXPORTED_FUNCTIONS=${SHERPA_ONNX_BRIDGE_WEB_EXPORTS}"
-    "SHELL:-sEXPORTED_RUNTIME_METHODS=UTF8ToString,getValue,setValue,FS"
+    # `stringToUTF8`/`lengthBytesUTF8` are required to pass `const char *`
+    # arguments: a direct `Module['_SherpaOnnxBridge*']` call does not convert
+    # JS strings the way `ccall` does, so the worker writes the argument
+    # buffers itself. `HEAPU8` is exported so that copy does not have to derive
+    # a byte view from `HEAPF32` and risk a stale buffer after memory growth.
+    "SHELL:-sEXPORTED_RUNTIME_METHODS=UTF8ToString,stringToUTF8,lengthBytesUTF8,getValue,setValue,HEAPF32,HEAPU8,FS"
   )
 
   # At `-O3` Emscripten runs `wasm-metadce` and then renames Wasm imports and
@@ -157,6 +208,7 @@ target_include_directories(sherpa-onnx-portable-bridge-cli
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${SHERPA_ONNX_SOURCE_DIR}
+    ${ONNXRUNTIME_INCLUDE_DIR}
 )
 target_link_libraries(sherpa-onnx-portable-bridge-cli
   PRIVATE
@@ -171,4 +223,7 @@ install(TARGETS sherpa-onnx-portable-bridge
 )
 install(FILES include/sherpa-onnx-portable-bridge.h
   DESTINATION include
+)
+install(FILES src/bridge_internal.h
+  DESTINATION include/sherpa-onnx-kmp
 )

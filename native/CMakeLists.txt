@@ -17,8 +17,12 @@ set(SHERPA_ONNX_ENABLE_JNI OFF CACHE BOOL "" FORCE)
 set(SHERPA_ONNX_ENABLE_C_API OFF CACHE BOOL "" FORCE)
 set(SHERPA_ONNX_ENABLE_WEBSOCKET OFF CACHE BOOL "" FORCE)
 set(SHERPA_ONNX_ENABLE_GPU OFF CACHE BOOL "" FORCE)
-set(SHERPA_ONNX_ENABLE_TTS OFF CACHE BOOL "" FORCE)
-set(SHERPA_ONNX_ENABLE_SPEAKER_DIARIZATION OFF CACHE BOOL "" FORCE)
+# Every feature the public API exposes is compiled into the bridge. A kind whose
+# upstream flag is off simply never registers a factory, and capability
+# discovery then reports it as absent — so the flags here and the shipped
+# surface cannot drift.
+set(SHERPA_ONNX_ENABLE_TTS ON CACHE BOOL "" FORCE)
+set(SHERPA_ONNX_ENABLE_SPEAKER_DIARIZATION ON CACHE BOOL "" FORCE)
 set(SHERPA_ONNX_ENABLE_BINARY OFF CACHE BOOL "" FORCE)
 
 # v0.4 Apple builds support CPU only. The static macOS ONNX Runtime package
@@ -48,6 +52,34 @@ else()
   FetchContent_MakeAvailable(sherpa_onnx)
   set(SHERPA_ONNX_SOURCE_DIR ${sherpa_onnx_SOURCE_DIR})
 endif()
+
+# The bridge's streaming headers (`online-recognizer.h`, `provider-config.h`)
+# include `onnxruntime_cxx_api.h` transitively. Upstream adds that include
+# directory with plain `include_directories()` inside its own subtree, which
+# does not reach a sibling target, so resolve the location here.
+set(_sherpa_onnx_kmp_ort_candidates
+  "$ENV{SHERPA_ONNXRUNTIME_INCLUDE_DIR}"
+  "${ONNXRUNTIME_DIR}/include"
+  "${onnxruntime_SOURCE_DIR}/include"
+  "${CMAKE_BINARY_DIR}/_deps/onnxruntime-src/include"
+  # The Android AAR package that `fetch-native-deps.sh` unpacks keeps the
+  # headers under `headers/`, not `include/`. Without this candidate the
+  # Android configure step fails even though the headers were downloaded.
+  "${CMAKE_BINARY_DIR}/_deps/onnxruntime-src/headers"
+)
+set(ONNXRUNTIME_INCLUDE_DIR "")
+foreach(_candidate IN LISTS _sherpa_onnx_kmp_ort_candidates)
+  if(_candidate AND EXISTS "${_candidate}/onnxruntime_cxx_api.h")
+    set(ONNXRUNTIME_INCLUDE_DIR "${_candidate}")
+    break()
+  endif()
+endforeach()
+if(NOT ONNXRUNTIME_INCLUDE_DIR)
+  message(FATAL_ERROR
+    "Could not locate onnxruntime_cxx_api.h. Set SHERPA_ONNXRUNTIME_INCLUDE_DIR "
+    "or SHERPA_ONNXRUNTIME_LIB_DIR before configuring.")
+endif()
+message(STATUS "Bridge ONNX Runtime headers: ${ONNXRUNTIME_INCLUDE_DIR}")
 
 add_subdirectory(portable-bridge)
 

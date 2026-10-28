@@ -17,9 +17,19 @@ val appleTestModelDir = providers.environmentVariable("SHERPA_ONNX_KMP_TEST_MODE
 val nativeDesktopTestModelDir = providers.environmentVariable("SHERPA_ONNX_KMP_TEST_MODEL_DIR")
     .orNull
     .orEmpty()
+
+// The feature models are a separate download from the pinned ASR model: the
+// ASR archive is one Persian NeMo CTC directory, while the feature suites need
+// a VAD, a KWS, a punctuation, a denoiser, a streaming, a TTS, and a
+// diarization model. Both directories are surfaced to the native tests so the
+// same assertions run on Apple, Linux, and Windows, not only on the JVM.
+val featureModelDir = providers.environmentVariable("SHERPA_ONNX_KMP_FEATURE_MODEL_DIR")
+    .orNull
+    .orEmpty()
 val nativeDesktopTestConfigDir = layout.buildDirectory.dir("generated/nativeDesktopIntegrationTest")
 val generateNativeDesktopTestConfig = tasks.register("generateNativeDesktopTestConfig") {
     inputs.property("modelDir", nativeDesktopTestModelDir)
+    inputs.property("featureModelDir", featureModelDir)
     outputs.dir(nativeDesktopTestConfigDir)
     doLast {
         fun escape(value: String): String = value
@@ -38,6 +48,9 @@ val generateNativeDesktopTestConfig = tasks.register("generateNativeDesktopTestC
             |internal const val NATIVE_DESKTOP_TEST_MODEL_DIR: String =
             |    "${escape(nativeDesktopTestModelDir)}"
             |
+            |internal const val NATIVE_DESKTOP_FEATURE_MODEL_DIR: String =
+            |    "${escape(featureModelDir)}"
+            |
             """.trimMargin(),
         )
     }
@@ -45,6 +58,7 @@ val generateNativeDesktopTestConfig = tasks.register("generateNativeDesktopTestC
 val appleTestConfigDir = layout.buildDirectory.dir("generated/appleIntegrationTest")
 val generateAppleTestConfig = tasks.register("generateAppleTestConfig") {
     inputs.property("modelDir", appleTestModelDir)
+    inputs.property("featureModelDir", featureModelDir)
     outputs.dir(appleTestConfigDir)
     doLast {
         fun escape(value: String): String = value
@@ -61,6 +75,8 @@ val generateAppleTestConfig = tasks.register("generateAppleTestConfig") {
             |package com.k2fsa.sherpa.onnx.kmp
             |
             |internal const val APPLE_TEST_MODEL_DIR: String = "${escape(appleTestModelDir)}"
+            |
+            |internal const val APPLE_FEATURE_MODEL_DIR: String = "${escape(featureModelDir)}"
             |
             """.trimMargin(),
         )
@@ -239,8 +255,28 @@ kotlin {
         getByName("mingwTest").dependsOn(nativeDesktopTest)
         nativeDesktopTest.kotlin.srcDir(nativeDesktopTestConfigDir)
 
+        // Feature-model integration assertions that hold for every Kotlin/Native
+        // target: Apple and the native desktops share the same cinterop transport
+        // and the same pinned models, so the suite lives here once and both test
+        // source sets inherit it. The platform-specific parts are the model
+        // directory constant and the WAV reader, both of which come from the
+        // consuming source set.
+        val nativeFeatureTest = create("nativeFeatureTest") {
+            dependsOn(commonTest.get())
+            dependencies {
+                implementation(kotlin("test"))
+                implementation(libs.kotlinx.coroutines.test)
+            }
+        }
+        getByName("appleTest").dependsOn(nativeFeatureTest)
+        nativeDesktopTest.dependsOn(nativeFeatureTest)
+
         commonMain.dependencies {
-            implementation(libs.kotlinx.coroutines.core)
+            // `Flow` and `suspend` are part of the published API, so consumers
+            // need coroutines on their compile classpath. Declaring it as
+            // `implementation` produced sample builds that could not resolve
+            // `kotlinx.coroutines` even though the library itself compiled.
+            api(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
         }
 

@@ -7,7 +7,6 @@ import com.k2fsa.sherpa.onnx.kmp.BridgeHandle
 import com.k2fsa.sherpa.onnx.kmp.BridgeReply
 import com.k2fsa.sherpa.onnx.kmp.PortableTransport
 import com.k2fsa.sherpa.onnx.kmp.SherpaOnnxException
-import com.k2fsa.sherpa.onnx.kmp.SherpaUnsupportedException
 import com.k2fsa.sherpa.onnx.kmp.SherpaWebWorkerConfig
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.w3c.dom.MessageEvent
@@ -93,15 +92,47 @@ internal object WebWorkerTransport : PortableTransport {
                 val id = (payload.id as? Number)?.toInt() ?: return
                 val request = pending.remove(id) ?: return
                 val ok = payload.ok as? Boolean ?: false
+                val json = payload.result as? String ?: "{}"
                 if (ok) {
-                    val result = payload.result as? String ?: "{}"
-                    request.continuation.resume(result)
+                    request.continuation.resume(
+                        WorkerReply(json = json, audio = readAudio(payload)),
+                    )
                 } else {
                     val message = payload.message as? String ?: "Worker call failed"
-                    request.continuation.resumeWithException(SherpaOnnxException(message))
+                    request.continuation.resumeWithException(
+                        SherpaOnnxException(message),
+                    )
                 }
             }
         }
+    }
+
+    /**
+     * Reads the optional audio payload from a reply.
+     *
+     * The worker transfers a `Float32Array` buffer back, so the samples arrive
+     * without a copy. A reply without audio is a normal end-of-stream signal.
+     */
+    private fun readAudio(payload: dynamic): AudioChunk? {
+        val audio = payload.audio
+        if (audio == null) return null
+        val samples = audio.samples
+        if (samples == null) return null
+        val length = (samples.length as? Number)?.toInt() ?: 0
+        if (length <= 0) return null
+        val copy = FloatArray(length)
+        for (index in 0 until length) {
+            copy[index] = (samples[index] as Number).toFloat()
+        }
+        val sampleRate = (audio.sampleRate as? Number)?.toInt() ?: 0
+        return AudioChunk(
+            samples = copy,
+            sampleRate = sampleRate,
+            // `progress` and `isLast` are payload fields the engine reads from
+            // the JSON `result`, so the transport leaves neutral values.
+            progress = 1.0f,
+            isLast = true,
+        )
     }
 
     private suspend fun awaitReady() {
@@ -128,7 +159,7 @@ internal object WebWorkerTransport : PortableTransport {
         type: String,
         payload: dynamic = js("({})"),
         transfer: Array<dynamic>? = null,
-    ): String {
+    ): WorkerReply {
         awaitReady()
         val active = ensureWorker()
         val id = nextId++
@@ -145,13 +176,13 @@ internal object WebWorkerTransport : PortableTransport {
         }
     }
 
-    override suspend fun infoJson(): String = request("info")
+    override suspend fun infoJson(): String = request("info").json
 
     override suspend fun create(kind: String, optionsJson: String): BridgeHandle {
         val payload = js("({})")
         payload.kind = kind
         payload.optionsJson = optionsJson
-        val raw = request("create", payload)
+        val raw = request("create", payload).json
         val handle = raw.toLongOrNull()
             ?: throw SherpaOnnxException("Worker returned an invalid handle: $raw")
         return BridgeHandle(handle)
@@ -166,7 +197,7 @@ internal object WebWorkerTransport : PortableTransport {
         payload.handle = handle.value.toString()
         payload.operation = operation
         payload.argumentsJson = argumentsJson
-        return request("call", payload)
+        return request("call", payload).json
     }
 
     override suspend fun pushAudio(
@@ -185,7 +216,7 @@ internal object WebWorkerTransport : PortableTransport {
         // Transfer the backing buffer so the samples are moved to the worker
         // instead of structured-cloned.
         val buffer: dynamic = typed.buffer
-        return request("pushAudio", payload, arrayOf<dynamic>(buffer))
+        return request("pushAudio", payload, arrayOf<dynamic>(buffer)).json
     }
 
     override suspend fun pullAudio(
@@ -197,8 +228,8 @@ internal object WebWorkerTransport : PortableTransport {
         payload.handle = handle.value.toString()
         payload.operation = operation
         payload.argumentsJson = argumentsJson
-        val raw = request("pullAudio", payload)
-        return BridgeReply(json = raw)
+        val reply = request("pullAudio", payload)
+        return BridgeReply(json = reply.json, audio = reply.audio)
     }
 
     override suspend fun destroy(handle: BridgeHandle) {
@@ -231,18 +262,16 @@ internal object WebWorkerTransport : PortableTransport {
         payload.baseUrl = baseUrl
         payload.mountPath = mountPath
         payload.files = files.toTypedArray()
-        return request("models.prepare", payload)
+        return request("models.prepare", payload).json
     }
 
-    /** Transfers audio out of the worker for TTS and similar pull paths. */
-    internal suspend fun pullChunk(
-        handle: BridgeHandle,
-        operation: String,
-        argumentsJson: String,
-    ): AudioChunk = throw SherpaUnsupportedException("Audio pull is not implemented")
-
     private class PendingRequest(
-        val continuation: kotlinx.coroutines.CancellableContinuation<String>,
+        val continuation: kotlinx.coroutines.CancellableContinuation<WorkerReply>,
+    )
+
+    private class WorkerReply(
+        val json: String,
+        val audio: AudioChunk?,
     )
 }
 

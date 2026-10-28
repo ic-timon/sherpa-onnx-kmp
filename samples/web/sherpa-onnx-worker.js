@@ -35,6 +35,33 @@ function reply(id, result) {
   postMessage({ id, type: "reply", ok: true, result });
 }
 
+/**
+ * Replies with audio pulled from the bridge.
+ *
+ * The samples are copied out of the Wasm heap into a fresh `Float32Array` and
+ * the backing buffer is transferred, so the page receives the waveform without
+ * a structured clone. The bridge's buffer is freed before the transfer.
+ */
+function replyAudio(id, result, sampleRate, numSamples, samplesPtr) {
+  const message = { id, type: "reply", ok: true, result };
+  let buffer = null;
+  if (samplesPtr && numSamples > 0) {
+    const samples = new Float32Array(numSamples);
+    samples.set(moduleGlobal.HEAPF32.subarray(
+      samplesPtr >> 2,
+      (samplesPtr >> 2) + numSamples,
+    ));
+    moduleGlobal._SherpaOnnxBridgeFreeAudio(samplesPtr);
+    message.audio = { samples, sampleRate };
+    buffer = samples.buffer;
+  }
+  if (buffer) {
+    postMessage(message, [buffer]);
+  } else {
+    postMessage(message);
+  }
+}
+
 function fail(id, message) {
   postMessage({ id, type: "reply", ok: false, message: String(message) });
 }
@@ -44,6 +71,46 @@ function readAndFree(module, pointer) {
   const value = module.UTF8ToString(pointer);
   module._SherpaOnnxBridgeFree(pointer);
   return value;
+}
+
+/**
+ * Copies a JS string into the Wasm heap as a NUL-terminated UTF-8 buffer.
+ *
+ * The exported `_SherpaOnnxBridge*` entry points take `const char *`, and the
+ * Emscripten glue does not convert a JS string for a direct `_function` call
+ * (only `ccall` does). Passing the string straight through hands the callee a
+ * coerced number, which the bridge reports as a null argument. The buffer is
+ * allocated before touching `HEAPU8` because `_malloc` may grow memory and
+ * detach the previous view.
+ */
+function toCString(module, value) {
+  const text = String(value ?? "");
+  if (typeof module.stringToUTF8 === "function" &&
+      typeof module.lengthBytesUTF8 === "function") {
+    const size = module.lengthBytesUTF8(text) + 1;
+    const pointer = module._malloc(size);
+    module.stringToUTF8(text, pointer, size);
+    return pointer;
+  }
+  const bytes = new TextEncoder().encode(text);
+  const pointer = module._malloc(bytes.length + 1);
+  // Only `HEAPF32` is exported to the module object, so the byte view is
+  // derived from its buffer. `HEAPU8` is used when a future build exports it.
+  const heap = module.HEAPU8 ?? new Uint8Array(module.HEAPF32.buffer);
+  if (pointer < 0 || pointer + bytes.length + 1 > heap.length) {
+    throw new Error(
+      "Cannot write a C string at " +
+        pointer +
+        " (length " +
+        (bytes.length + 1) +
+        ", heap " +
+        heap.length +
+        ")",
+    );
+  }
+  heap.set(bytes, pointer);
+  heap[pointer + bytes.length] = 0;
+  return pointer;
 }
 
 /** Ensures the MEMFS directory exists, creating parents as needed. */
@@ -128,10 +195,12 @@ self.onmessage = async (event) => {
         const handlePtr = module._malloc(8);
         const errorPtr = module._malloc(4);
         module.setValue(errorPtr, 0, "i32");
+        const kindPtr = toCString(module, payload.kind);
+        const optionsPtr = toCString(module, payload.optionsJson ?? "{}");
         try {
           const status = module._SherpaOnnxBridgeCreate(
-            payload.kind,
-            payload.optionsJson,
+            kindPtr,
+            optionsPtr,
             handlePtr,
             errorPtr,
           );
@@ -146,6 +215,8 @@ self.onmessage = async (event) => {
           if (errorValue) readAndFree(module, errorValue);
           reply(id, String(module.getValue(handlePtr, "i64")));
         } finally {
+          module._free(kindPtr);
+          module._free(optionsPtr);
           module._free(handlePtr);
           module._free(errorPtr);
         }
@@ -156,11 +227,13 @@ self.onmessage = async (event) => {
         const errorPtr = module._malloc(4);
         module.setValue(resultPtr, 0, "i32");
         module.setValue(errorPtr, 0, "i32");
+        const operationPtr = toCString(module, payload.operation);
+        const argumentsPtr = toCString(module, payload.argumentsJson ?? "{}");
         try {
           const status = module._SherpaOnnxBridgeCall(
             BigInt(payload.handle),
-            payload.operation,
-            payload.argumentsJson,
+            operationPtr,
+            argumentsPtr,
             resultPtr,
             errorPtr,
           );
@@ -175,6 +248,8 @@ self.onmessage = async (event) => {
           if (errorValue) readAndFree(module, errorValue);
           reply(id, readAndFree(module, module.getValue(resultPtr, "i32")));
         } finally {
+          module._free(operationPtr);
+          module._free(argumentsPtr);
           module._free(resultPtr);
           module._free(errorPtr);
         }
@@ -189,11 +264,12 @@ self.onmessage = async (event) => {
         const samplesPtr = module._malloc(byteLength);
         const errorPtr = module._malloc(4);
         module.setValue(errorPtr, 0, "i32");
+        const operationPtr = toCString(module, payload.operation);
         try {
           module.HEAPF32.set(samples, samplesPtr >> 2);
           const status = module._SherpaOnnxBridgePushAudio(
             BigInt(payload.handle),
-            payload.operation,
+            operationPtr,
             payload.sampleRate,
             samplesPtr,
             payload.numSamples,
@@ -210,7 +286,62 @@ self.onmessage = async (event) => {
           if (errorValue) readAndFree(module, errorValue);
           reply(id, "{}");
         } finally {
+          module._free(operationPtr);
           module._free(samplesPtr);
+          module._free(errorPtr);
+        }
+        break;
+      }
+      case "pullAudio": {
+        // [handle, operation, argumentsJson, sampleRate*, samples*, numSamples*,
+        //  resultJson*, error*]
+        const sampleRatePtr = module._malloc(4);
+        const samplesPtrPtr = module._malloc(4);
+        const numSamplesPtr = module._malloc(4);
+        const resultPtr = module._malloc(4);
+        const errorPtr = module._malloc(4);
+        module.setValue(sampleRatePtr, 0, "i32");
+        module.setValue(samplesPtrPtr, 0, "i32");
+        module.setValue(numSamplesPtr, 0, "i32");
+        module.setValue(resultPtr, 0, "i32");
+        module.setValue(errorPtr, 0, "i32");
+        const operationPtr = toCString(module, payload.operation);
+        const argumentsPtr = toCString(module, payload.argumentsJson ?? "{}");
+        try {
+          const status = module._SherpaOnnxBridgePullAudio(
+            BigInt(payload.handle),
+            operationPtr,
+            argumentsPtr,
+            sampleRatePtr,
+            samplesPtrPtr,
+            numSamplesPtr,
+            resultPtr,
+            errorPtr,
+          );
+          const errorValue = module.getValue(errorPtr, "i32");
+          if (status !== 0) {
+            throw new Error(
+              errorValue
+                ? readAndFree(module, errorValue)
+                : "Bridge pullAudio failed with status " + status,
+            );
+          }
+          if (errorValue) readAndFree(module, errorValue);
+          const json = readAndFree(module, module.getValue(resultPtr, "i32"));
+          replyAudio(
+            id,
+            json,
+            module.getValue(sampleRatePtr, "i32"),
+            module.getValue(numSamplesPtr, "i32"),
+            module.getValue(samplesPtrPtr, "i32"),
+          );
+        } finally {
+          module._free(operationPtr);
+          module._free(argumentsPtr);
+          module._free(sampleRatePtr);
+          module._free(samplesPtrPtr);
+          module._free(numSamplesPtr);
+          module._free(resultPtr);
           module._free(errorPtr);
         }
         break;
@@ -229,6 +360,11 @@ self.onmessage = async (event) => {
     }
   } catch (error) {
     fail(id, error && error.message ? error.message : error);
+    console.error(
+      "worker error",
+      type,
+      error && error.stack ? error.stack : error,
+    );
   }
 };
 

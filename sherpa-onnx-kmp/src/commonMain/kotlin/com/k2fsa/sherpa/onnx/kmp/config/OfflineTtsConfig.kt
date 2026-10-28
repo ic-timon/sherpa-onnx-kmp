@@ -64,10 +64,24 @@ public data class TtsRequest(
     public val text: String,
     public val speakerId: Int = 0,
     public val speed: Float = 1.0f,
+    /**
+     * Pre-computed phoneme codepoints, one list per sentence.
+     *
+     * sherpa-onnx dropped its built-in espeak-ng phonemizer in v2.0.0, so a
+     * Piper, Coqui, icefall, or Inflect VITS model without a lexicon produces no
+     * audio from plain text. Supply the codepoints from an external phonemizer
+     * (for example `piper_phonemize`) and the same model synthesizes. Models
+     * with a lexicon — the icefall Chinese VITS models, for example — do not
+     * need this.
+     */
+    public val phonemeCodepoints: List<List<Int>> = emptyList(),
     public val extraOptions: Map<String, String> = emptyMap(),
 ) {
     init {
         require(text.isNotBlank()) { "text must not be blank" }
         require(speed > 0.0f) { "speed must be positive" }
+        require(phonemeCodepoints.all { sentence -> sentence.isNotEmpty() }) {
+            "phonemeCodepoints sentences must not be empty"
+        }
     }
 }

@@ -10,7 +10,6 @@ import platform.Foundation.NSFileManager
 public class FileModelStore(
     private val rootPath: String,
 ) : ModelStore {
-    @Throws(Throwable::class)
     override suspend fun prepare(files: Set<ModelPath>): PreparedModel {
         val manager = NSFileManager.defaultManager
         require(manager.fileExistsAtPath(rootPath)) {
@@ -35,7 +34,6 @@ public class BundleModelStore(
     private val resourceRoot: String = "models",
     private val bundle: NSBundle = NSBundle.mainBundle,
 ) : ModelStore {
-    @Throws(Throwable::class)
     override suspend fun prepare(files: Set<ModelPath>): PreparedModel {
         val resourcePath = requireNotNull(bundle.resourcePath) {
             "Application bundle does not expose a resource path"

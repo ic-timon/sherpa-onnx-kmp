@@ -98,10 +98,25 @@ for symbol in \
   _SherpaOnnxBridgeCreate \
   _SherpaOnnxBridgeCall \
   _SherpaOnnxBridgePushAudio \
+  _SherpaOnnxBridgePullAudio \
   _SherpaOnnxBridgeDestroy \
-  _SherpaOnnxBridgeFree; do
+  _SherpaOnnxBridgeFree \
+  _SherpaOnnxBridgeFreeAudio; do
   if ! grep -Fq "$symbol" "$glue"; then
     echo "JS glue does not publish $symbol" >&2
+    exit 1
+  fi
+done
+
+# The worker passes `const char *` arguments by writing them into the heap
+# itself. A direct `Module['_SherpaOnnxBridge*']` call does not convert a JS
+# string the way `ccall` does, so these runtime helpers are part of the contract:
+# without them the worker has to hand-roll UTF-8 encoding and every argument
+# arrives as a coerced number.
+for helper in stringToUTF8 lengthBytesUTF8 HEAPU8 HEAPF32 setValue getValue \
+              UTF8ToString; do
+  if ! grep -Fq "Module[\"$helper\"]" "$glue"; then
+    echo "JS glue does not export the runtime helper $helper" >&2
     exit 1
   fi
 done

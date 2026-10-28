@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.k2fsa.sherpa.onnx.kmp.internal
 
+import com.k2fsa.sherpa.onnx.kmp.AudioChunk
 import com.k2fsa.sherpa.onnx.kmp.AudioData
 import com.k2fsa.sherpa.onnx.kmp.BridgeHandle
 import com.k2fsa.sherpa.onnx.kmp.BridgeReply
@@ -51,7 +52,27 @@ internal object JniPortableTransport : PortableTransport {
         handle: BridgeHandle,
         operation: String,
         argumentsJson: String,
-    ): BridgeReply = throw SherpaOnnxException("Audio pull is not implemented")
+    ): BridgeReply = bridgeCall {
+        val raw = nativePullAudio(handle.value, operation, argumentsJson)
+            ?: throw SherpaOnnxException("Native bridge returned no audio reply")
+        // The JNI shim returns [sampleRate: Int, samples: FloatArray, json: String].
+        val sampleRate = raw[0] as Int
+        val samples = raw[1] as FloatArray
+        val json = raw[2] as String
+        val chunk = if (samples.isEmpty()) {
+            null
+        } else {
+            // `progress` and `isLast` are payload fields the engine reads from
+            // `json`, so the transport fills only the audio and its rate.
+            AudioChunk(
+                samples = samples,
+                sampleRate = sampleRate,
+                progress = 1.0f,
+                isLast = true,
+            )
+        }
+        BridgeReply(json = json.ifEmpty { "{}" }, audio = chunk)
+    }
 
     override suspend fun destroy(handle: BridgeHandle) {
         withContext(Dispatchers.Default) {
@@ -79,6 +100,11 @@ internal object JniPortableTransport : PortableTransport {
         sampleRate: Int,
         samples: FloatArray,
     ): String
+    private external fun nativePullAudio(
+        handle: Long,
+        operation: String,
+        argumentsJson: String,
+    ): Array<Any?>?
     private external fun nativeDestroy(handle: Long)
 }
 

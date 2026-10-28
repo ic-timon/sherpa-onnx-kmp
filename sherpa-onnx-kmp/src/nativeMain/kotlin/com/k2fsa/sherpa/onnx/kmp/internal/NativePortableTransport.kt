@@ -16,15 +16,20 @@ import com.k2fsa.sherpa.onnx.kmp.cinterop.SherpaOnnxBridgeCall
 import com.k2fsa.sherpa.onnx.kmp.cinterop.SherpaOnnxBridgeCreate
 import com.k2fsa.sherpa.onnx.kmp.cinterop.SherpaOnnxBridgeDestroy
 import com.k2fsa.sherpa.onnx.kmp.cinterop.SherpaOnnxBridgeFree
+import com.k2fsa.sherpa.onnx.kmp.cinterop.SherpaOnnxBridgeFreeAudio
 import com.k2fsa.sherpa.onnx.kmp.cinterop.SherpaOnnxBridgeInfoJson
+import com.k2fsa.sherpa.onnx.kmp.cinterop.SherpaOnnxBridgePullAudio
 import com.k2fsa.sherpa.onnx.kmp.cinterop.SherpaOnnxBridgePushAudio
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.CPointerVar
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.FloatVar
+import kotlinx.cinterop.IntVar
 import kotlinx.cinterop.ULongVar
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
+import kotlinx.cinterop.get
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.toKString
@@ -111,7 +116,55 @@ internal object NativePortableTransport : PortableTransport {
         handle: BridgeHandle,
         operation: String,
         argumentsJson: String,
-    ): BridgeReply = throw SherpaUnsupportedException("Audio pull is not implemented")
+    ): BridgeReply = bridgeCall {
+        memScoped {
+            val sampleRate = alloc<IntVar>().apply { value = 0 }
+            val numSamples = alloc<IntVar>().apply { value = 0 }
+            val samples = alloc<CPointerVar<FloatVar>>().apply { value = null }
+            val result = alloc<CPointerVar<ByteVar>>().apply { value = null }
+            val error = alloc<CPointerVar<ByteVar>>().apply { value = null }
+            val status = SherpaOnnxBridgePullAudio(
+                handle = handle.value.toULong(),
+                operation = operation,
+                arguments_json = argumentsJson,
+                sample_rate = sampleRate.ptr,
+                samples = samples.ptr,
+                num_samples = numSamples.ptr,
+                result_json = result.ptr,
+                error = error.ptr,
+            )
+            checkStatus(status, operation, error.value)
+
+            val json = consumeString(result.value)
+            val pointer = samples.value
+            val count = numSamples.value
+            val rate = sampleRate.value
+            try {
+                val chunk = if (pointer == null || count <= 0) {
+                    null
+                } else {
+                    val copy = FloatArray(count)
+                    for (index in 0 until count) {
+                        copy[index] = pointer[index]
+                    }
+                    AudioChunk(
+                        samples = copy,
+                        sampleRate = rate,
+                        // `progress` and `isLast` live in the operation's JSON;
+                        // the transport leaves them at their neutral values and
+                        // the engine overrides them from the payload.
+                        progress = 1.0f,
+                        isLast = true,
+                    )
+                }
+                BridgeReply(json = json.ifEmpty { "{}" }, audio = chunk)
+            } finally {
+                if (pointer != null) {
+                    SherpaOnnxBridgeFreeAudio(pointer)
+                }
+            }
+        }
+    }
 
     override suspend fun destroy(handle: BridgeHandle) {
         withContext(Dispatchers.Default) {

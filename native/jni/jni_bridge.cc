@@ -121,6 +121,87 @@ Java_com_k2fsa_sherpa_onnx_kmp_internal_JniPortableTransport_nativePushAudio(
   return NewString(env, R"({"ok":true})");
 }
 
+JNIEXPORT jobjectArray JNICALL
+Java_com_k2fsa_sherpa_onnx_kmp_internal_JniPortableTransport_nativePullAudio(
+    JNIEnv *env, jobject /*thiz*/, jlong handle, jstring operation,
+    jstring arguments_json) {
+  const std::string operation_str = ToString(env, operation);
+  const std::string arguments_str = ToString(env, arguments_json);
+
+  int32_t sample_rate = 0;
+  int32_t num_samples = 0;
+  float *samples = nullptr;
+  char *result = nullptr;
+  char *error = nullptr;
+  const int32_t status = SherpaOnnxBridgePullAudio(
+      static_cast<uint64_t>(handle), operation_str.c_str(),
+      arguments_str.c_str(), &sample_rate, &samples, &num_samples, &result,
+      &error);
+
+  if (status != SHERPA_ONNX_BRIDGE_OK) {
+    SherpaOnnxBridgeFreeAudio(samples);
+    SherpaOnnxBridgeFree(result);
+    ThrowIllegalState(env, error);
+    return nullptr;
+  }
+
+  // The reply is a fixed three-element array:
+  //   [0] java.lang.Integer sample rate
+  //   [1] float[] samples (never null; empty when the operation produced none)
+  //   [2] java.lang.String result JSON
+  //
+  // A dedicated holder class would need Kotlin/JVM-side registration for no
+  // benefit: the transport immediately converts it to BridgeReply.
+  jclass object_class = env->FindClass("java/lang/Object");
+  if (object_class == nullptr) {
+    SherpaOnnxBridgeFreeAudio(samples);
+    SherpaOnnxBridgeFree(result);
+    return nullptr;
+  }
+  jobjectArray reply =
+      env->NewObjectArray(3, object_class, nullptr);
+  env->DeleteLocalRef(object_class);
+  if (reply == nullptr) {
+    SherpaOnnxBridgeFreeAudio(samples);
+    SherpaOnnxBridgeFree(result);
+    return nullptr;
+  }
+
+  jclass integer_class = env->FindClass("java/lang/Integer");
+  if (integer_class != nullptr) {
+    jmethodID integer_init =
+        env->GetStaticMethodID(integer_class, "valueOf", "(I)Ljava/lang/Integer;");
+    if (integer_init != nullptr) {
+      jobject boxed = env->CallStaticObjectMethod(integer_class, integer_init,
+                                                  static_cast<jint>(sample_rate));
+      if (boxed != nullptr) {
+        env->SetObjectArrayElement(reply, 0, boxed);
+        env->DeleteLocalRef(boxed);
+      }
+    }
+    env->DeleteLocalRef(integer_class);
+  }
+
+  jfloatArray waveform = env->NewFloatArray(num_samples > 0 ? num_samples : 0);
+  if (waveform != nullptr) {
+    if (num_samples > 0 && samples != nullptr) {
+      env->SetFloatArrayRegion(waveform, 0, num_samples, samples);
+    }
+    env->SetObjectArrayElement(reply, 1, waveform);
+    env->DeleteLocalRef(waveform);
+  }
+
+  jstring json = NewString(env, result != nullptr ? result : "");
+  if (json != nullptr) {
+    env->SetObjectArrayElement(reply, 2, json);
+    env->DeleteLocalRef(json);
+  }
+
+  SherpaOnnxBridgeFreeAudio(samples);
+  SherpaOnnxBridgeFree(result);
+  return reply;
+}
+
 JNIEXPORT void JNICALL
 Java_com_k2fsa_sherpa_onnx_kmp_internal_JniPortableTransport_nativeDestroy(
     JNIEnv * /*env*/, jobject /*thiz*/, jlong handle) {

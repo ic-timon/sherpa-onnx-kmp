@@ -82,19 +82,42 @@ done
 curl -fsS "http://127.0.0.1:$port/" >/dev/null
 
 cd "$work"
+# `BROWSER` selects the engine. Chromium is the default because it is the
+# engine the CI job installs; Firefox is available for a second-engine check.
+browser_name="${SHERPA_ONNX_KMP_WEB_BROWSER:-chromium}"
+# A developer machine may already have the browser installed through the
+# system channel, in which case Playwright's own download is unnecessary.
+playwright_channel="${SHERPA_ONNX_KMP_WEB_CHANNEL:-}"
 if [[ ! -d node_modules/playwright ]]; then
   npm init -y >/dev/null 2>&1
-  npm install --no-audit --no-fund playwright@1.56.1 >/dev/null
-  npx playwright install --with-deps chromium
+  npm install --no-audit --no-fund --registry="${SHERPA_ONNX_KMP_NPM_REGISTRY:-https://registry.npmjs.org}" playwright@1.56.1 >/dev/null
+  # `--with-deps` is a no-op outside Linux and requires root, so it is only
+  # used where package installation actually exists. A named channel reuses a
+  # system browser, so no download is needed at all.
+  if [[ -z "$playwright_channel" ]]; then
+    if [[ "$(uname -s)" == "Linux" ]]; then
+      npx playwright install --with-deps "$browser_name"
+    else
+      npx playwright install "$browser_name"
+    fi
+  fi
 fi
 
 cat > drive.mjs <<'SCRIPT'
-import { chromium } from "playwright";
+import { chromium, firefox } from "playwright";
 
 const url = process.argv[2];
 const expected = process.argv[3] ?? "";
+const engineName = process.argv[4] ?? "chromium";
+const channel = process.argv[5] ?? "";
 
-const browser = await chromium.launch();
+const engine = engineName === "firefox" ? firefox : chromium;
+const options = {};
+// An empty channel selects Playwright's bundled browser. Naming a channel
+// ("chrome", "msedge") reuses a system install instead of downloading one.
+if (channel) options.channel = channel;
+
+const browser = await engine.launch(options);
 const page = await browser.newPage();
 const consoleLines = [];
 page.on("console", (message) => consoleLines.push(`${message.type()}: ${message.text()}`));
@@ -152,4 +175,5 @@ try {
 }
 SCRIPT
 
-node drive.mjs "http://127.0.0.1:$port/index.html" "$expected_text"
+node drive.mjs "http://127.0.0.1:$port/index.html" "$expected_text" \
+  "$browser_name" "$playwright_channel"

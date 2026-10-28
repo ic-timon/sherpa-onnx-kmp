@@ -6,6 +6,7 @@ import java.io.DataInputStream
 import java.io.InputStream
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class AndroidIntegrationTest {
@@ -30,6 +31,41 @@ class AndroidIntegrationTest {
                 assertTrue(result.text.isNotBlank())
                 assertTrue(result.tokens.isNotEmpty())
             }
+        }
+    }
+
+    /**
+     * The AAR's native libraries must export every feature the JVM build has.
+     *
+     * This is the Android-specific half of feature coverage: the JNI transport
+     * is literally the same code the JVM suite exercises against every real
+     * model, so what Android adds is proof that the packaged `.so` for each ABI
+     * was compiled with the feature flags on and exports the bridge entry points
+     * they need. A missing feature here means a packaging regression, not a
+     * transport one.
+     */
+    @Test
+    fun packagedBridgeAdvertisesEveryFeature() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().context
+        createSherpaRuntime(AssetModelStore(context, "models/nemo-ctc")).useResource { runtime ->
+            val expected = setOf(
+                SherpaFeature.OFFLINE_ASR,
+                SherpaFeature.ONLINE_ASR,
+                SherpaFeature.VAD,
+                SherpaFeature.TTS,
+                SherpaFeature.KEYWORD_SPOTTING,
+                SherpaFeature.PUNCTUATION,
+                SherpaFeature.SPEAKER_DIARIZATION,
+                SherpaFeature.SPEECH_ENHANCEMENT,
+            )
+            assertEquals(
+                expected,
+                runtime.capabilities.features,
+                "The packaged Android bridge does not expose every feature",
+            )
+            assertTrue(runtime.backendInfo.bridgeAbiVersion >= 2)
+            assertTrue(runtime.backendInfo.coreVersion.isNotBlank())
+            assertTrue(runtime.backendInfo.onnxRuntimeVersion.isNotBlank())
         }
     }
 

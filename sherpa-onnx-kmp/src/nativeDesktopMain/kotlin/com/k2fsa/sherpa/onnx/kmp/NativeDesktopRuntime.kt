@@ -13,7 +13,6 @@ import com.k2fsa.sherpa.onnx.kmp.internal.NativePortableTransport
 public class FileModelStore(
     private val rootPath: String,
 ) : ModelStore {
-    @Throws(Throwable::class)
     override suspend fun prepare(files: Set<ModelPath>): PreparedModel {
         require(rootPath.isNotBlank()) { "Model root must not be blank" }
         require(isDirectory(rootPath)) {

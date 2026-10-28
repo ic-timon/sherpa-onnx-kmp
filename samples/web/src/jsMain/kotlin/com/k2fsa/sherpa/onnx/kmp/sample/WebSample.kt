@@ -17,9 +17,9 @@ import com.k2fsa.sherpa.onnx.kmp.OfflineRecognizerConfig
 import com.k2fsa.sherpa.onnx.kmp.configureSherpaWebWorker
 import com.k2fsa.sherpa.onnx.kmp.createSherpaRuntime
 import com.k2fsa.sherpa.onnx.kmp.useResource
-import org.khronos.webgl.Int8Array
-import org.khronos.webgl.get
-import org.w3c.xhr.XMLHttpRequest
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * Transcribes `test_wavs/0.wav` from [modelBaseUrl] and returns the text.
@@ -49,7 +49,7 @@ public suspend fun runSample(modelBaseUrl: String): String {
     }
 }
 
-private fun loadWav(url: String): AudioData {
+private suspend fun loadWav(url: String): AudioData {
     val buffer: dynamic = fetchArrayBuffer(url)
     val view: dynamic = js("new Uint8Array(buffer)")
     val length: Int = view.length as Int
@@ -109,20 +109,45 @@ private fun loadWav(url: String): AudioData {
 }
 
 /**
- * Downloads a URL synchronously and returns its ArrayBuffer.
+ * Downloads a URL and returns its ArrayBuffer.
  *
- * The sample blocks because it runs from a click handler and the page has
- * nothing else to do; production code should load audio asynchronously before
- * creating the runtime.
+ * The request must be asynchronous: browsers reject assigning `responseType`
+ * on a synchronous `XMLHttpRequest`, and `arraybuffer` is the only response
+ * type that yields the raw bytes without text-decoding them first.
  */
-private fun fetchArrayBuffer(url: String): dynamic {
-    val request: dynamic = js("new XMLHttpRequest()")
-    request.open("GET", url, false)
-    request.responseType = "arraybuffer"
-    request.send()
-    val status: Int = request.status as Int
-    if (status < 200 || status > 299) {
-        throw IllegalStateException("Unable to load $url (HTTP $status)")
+private suspend fun fetchArrayBuffer(url: String): dynamic =
+    suspendCancellableCoroutine { continuation ->
+        val request: dynamic = js("new XMLHttpRequest()")
+        request.open("GET", url, true)
+        request.responseType = "arraybuffer"
+        request.onload = {
+            val status: Int = request.status as Int
+            if (status < 200 || status > 299) {
+                if (continuation.isActive) {
+                    continuation.resumeWithException(
+                        IllegalStateException("Unable to load $url (HTTP $status)"),
+                    )
+                }
+            } else {
+                val response: dynamic = request.response
+                if (response == null) {
+                    if (continuation.isActive) {
+                        continuation.resumeWithException(
+                            IllegalStateException("Empty response for $url"),
+                        )
+                    }
+                } else if (continuation.isActive) {
+                    continuation.resume(response)
+                }
+            }
+        }
+        request.onerror = {
+            if (continuation.isActive) {
+                continuation.resumeWithException(
+                    IllegalStateException("Network error while loading $url"),
+                )
+            }
+        }
+        continuation.invokeOnCancellation { request.abort() }
+        request.send()
     }
-    return request.response ?: throw IllegalStateException("Empty response for $url")
-}

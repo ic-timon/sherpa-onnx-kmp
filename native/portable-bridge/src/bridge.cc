@@ -8,7 +8,6 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -21,10 +20,6 @@
 
 namespace sherpa_onnx::bridge {
 
-#if defined(SHERPA_ONNX_BRIDGE_WITH_SHERPA)
-void RegisterDefaultOfflineAsrFactory();
-#endif
-
 namespace {
 
 std::mutex g_mutex;
@@ -32,12 +27,13 @@ uint64_t g_next_handle = 1;
 
 struct HandleEntry {
   std::mutex mutex;
-  std::unique_ptr<OfflineAsrBackend> backend;
-  Audio pending_audio;
-  bool has_audio = false;
+  std::unique_ptr<Backend> backend;
+  std::string kind;
+  uint64_t parent = 0;
+  std::vector<uint64_t> children;
 };
 
-std::unique_ptr<OfflineAsrBackendFactory> g_offline_asr_factory;
+/** Protected by g_mutex. */
 std::unordered_map<uint64_t, std::shared_ptr<HandleEntry>> g_handles;
 
 std::shared_ptr<HandleEntry> FindHandle(uint64_t handle) {
@@ -46,6 +42,56 @@ std::shared_ptr<HandleEntry> FindHandle(uint64_t handle) {
     return nullptr;
   }
   return it->second;
+}
+
+/**
+ * Creates a handle entry. Caller must hold g_mutex.
+ *
+ * The backend's child registrar re-acquires g_mutex. That is safe because a
+ * child is only ever registered while the parent's handle mutex is held, and no
+ * code path takes g_mutex before a handle mutex.
+ */
+uint64_t InsertHandleLocked(std::unique_ptr<Backend> backend,
+                            const std::string &kind, uint64_t parent) {
+  const uint64_t created = g_next_handle++;
+  backend->set_register_child(
+      [created](const std::string &child_kind,
+                std::unique_ptr<Backend> child) -> uint64_t {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        return InsertHandleLocked(std::move(child), child_kind, created);
+      });
+
+  auto entry = std::make_shared<HandleEntry>();
+  entry->kind = kind;
+  entry->parent = parent;
+  entry->backend = std::move(backend);
+  g_handles.emplace(created, std::move(entry));
+  if (parent != 0) {
+    auto it = g_handles.find(parent);
+    if (it != g_handles.end()) {
+      it->second->children.push_back(created);
+    }
+  }
+  return created;
+}
+
+/** Removes a handle from the registry. Caller must hold g_mutex. */
+std::shared_ptr<HandleEntry> RemoveHandleLocked(uint64_t handle) {
+  auto it = g_handles.find(handle);
+  if (it == g_handles.end()) {
+    return nullptr;
+  }
+  auto entry = std::move(it->second);
+  g_handles.erase(it);
+  if (entry->parent != 0) {
+    auto parent = g_handles.find(entry->parent);
+    if (parent != g_handles.end()) {
+      auto &siblings = parent->second->children;
+      siblings.erase(std::remove(siblings.begin(), siblings.end(), handle),
+                     siblings.end());
+    }
+  }
+  return entry;
 }
 
 bool ParseOptionsJson(const char *json, Options *options, Error *error) {
@@ -93,9 +139,12 @@ bool ParseOptionsJson(const char *json, Options *options, Error *error) {
   return true;
 }
 
-std::string SuccessJson() { return "{\"ok\":true}"; }
-
 }  // namespace
+
+FactoryMap &DefaultFactories() {
+  static auto *factories = new FactoryMap();
+  return *factories;
+}
 
 void SetError(Error *error, SherpaOnnxBridgeStatus status,
               const std::string &message) {
@@ -115,12 +164,51 @@ char *DuplicateString(const std::string &value) {
   return ans;
 }
 
-void SetOfflineAsrFactoryForTesting(
-    std::unique_ptr<OfflineAsrBackendFactory> factory) {
-  std::lock_guard<std::mutex> lock(g_mutex);
-  g_offline_asr_factory = std::move(factory);
-  g_handles.clear();
+std::string Backend::Call(const std::string & /*operation*/,
+                          const std::string & /*arguments*/, Error *error) {
+  SetError(error, SHERPA_ONNX_BRIDGE_UNSUPPORTED,
+           "This resource does not support control operations");
+  return {};
 }
+
+void Backend::PushAudio(const std::string & /*operation*/,
+                        const Audio & /*audio*/, Error *error) {
+  SetError(error, SHERPA_ONNX_BRIDGE_UNSUPPORTED,
+           "This resource does not accept audio input");
+}
+
+std::string Backend::PullAudio(const std::string & /*operation*/,
+                               const std::string & /*arguments*/,
+                               Audio * /*audio*/, Error *error) {
+  SetError(error, SHERPA_ONNX_BRIDGE_UNSUPPORTED,
+           "This resource does not produce audio");
+  return {};
+}
+
+void SetFactoryForTesting(const std::string &kind,
+                          std::unique_ptr<BackendFactory> factory) {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  auto &factories = DefaultFactories();
+  if (factory) {
+    factories[kind] = std::move(factory);
+  } else {
+    factories.erase(kind);
+  }
+}
+
+void ResetFactoriesForTesting() {
+  {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    DefaultFactories().clear();
+  }
+  RegisterDefaultFactories();
+}
+
+#if !defined(SHERPA_ONNX_BRIDGE_WITH_SHERPA)
+// Without the sherpa-onnx backend there is nothing to install. Test doubles are
+// registered through SetFactoryForTesting().
+void RegisterDefaultFactories() {}
+#endif
 
 }  // namespace sherpa_onnx::bridge
 
@@ -131,20 +219,79 @@ int32_t SherpaOnnxBridgeAbiVersion(void) {
 }
 
 char *SherpaOnnxBridgeInfoJson(void) {
-  namespace bridge = sherpa_onnx::bridge;
+  using namespace sherpa_onnx::bridge;
+
+  RegisterDefaultFactories();
+
+  nlohmann::json resources = nlohmann::json::array();
+  nlohmann::json operations = nlohmann::json::array({"health"});
+  {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    auto &factories = DefaultFactories();
+    std::vector<std::string> kinds;
+    kinds.reserve(factories.size());
+    for (const auto &entry : factories) {
+      kinds.push_back(entry.first);
+    }
+    std::sort(kinds.begin(), kinds.end());
+
+    nlohmann::json children = nlohmann::json::array();
+    for (const auto &kind : kinds) {
+      resources.push_back(kind);
+      // The factory is the single source of truth for its resources'
+      // operations, so capability discovery cannot drift from behavior.
+      for (const auto &name : factories[kind]->Operations()) {
+        operations.push_back(kind + "." + name);
+      }
+      for (const auto &[child_kind, child_ops] :
+           factories[kind]->ChildOperations()) {
+        children.push_back(child_kind);
+        for (const auto &name : child_ops) {
+          operations.push_back(child_kind + "." + name);
+        }
+      }
+    }
+    for (auto &child : children) {
+      resources.push_back(child);
+    }
+  }
+  // `resources` and `operations` are sorted so a transport can compare two
+  // builds' reports directly. Sorting after collecting also keeps the child
+  // kinds interleaved correctly with their parents.
+  {
+    std::vector<std::string> flat;
+    for (auto &item : resources) {
+      flat.push_back(item.get<std::string>());
+    }
+    std::sort(flat.begin(), flat.end());
+    flat.erase(std::unique(flat.begin(), flat.end()), flat.end());
+    resources = nlohmann::json::array();
+    for (const auto &kind : flat) {
+      resources.push_back(kind);
+    }
+
+    flat.clear();
+    for (auto &item : operations) {
+      flat.push_back(item.get<std::string>());
+    }
+    std::sort(flat.begin(), flat.end());
+    operations = nlohmann::json::array();
+    for (const auto &name : flat) {
+      operations.push_back(name);
+    }
+  }
+
   nlohmann::json info = {
       {"abiVersion", SHERPA_ONNX_BRIDGE_ABI_VERSION},
       {"schemaVersion", 1},
-      {"resources", nlohmann::json::array({"offline-asr"})},
-      {"operations", nlohmann::json::array({"health",
-                                            "offline-asr.set-audio",
-                                            "offline-asr.transcribe"})},
+      {"resources", std::move(resources)},
+      {"operations", std::move(operations)},
   };
 #if defined(SHERPA_ONNX_BRIDGE_WITH_SHERPA)
   info["coreVersion"] = sherpa_onnx::GetVersionStr();
   info["onnxruntimeVersion"] = sherpa_onnx::GetOnnxruntimeVersionStr();
 #endif
-  return bridge::DuplicateString(info.dump());
+  return DuplicateString(info.dump());
 }
 
 int32_t SherpaOnnxBridgeCreate(const char *kind, const char *options_json,
@@ -162,9 +309,6 @@ int32_t SherpaOnnxBridgeCreate(const char *kind, const char *options_json,
   if (kind == nullptr || handle == nullptr) {
     SetError(&bridge_error, SHERPA_ONNX_BRIDGE_INVALID_ARGUMENT,
              "kind and handle must not be null");
-  } else if (std::strcmp(kind, "offline-asr") != 0) {
-    SetError(&bridge_error, SHERPA_ONNX_BRIDGE_UNSUPPORTED,
-             std::string("Unsupported resource kind: ") + kind);
   }
 
   Options options;
@@ -172,38 +316,36 @@ int32_t SherpaOnnxBridgeCreate(const char *kind, const char *options_json,
     ParseOptionsJson(options_json, &options, &bridge_error);
   }
 
-#if defined(SHERPA_ONNX_BRIDGE_WITH_SHERPA)
-  bool needs_default_factory = false;
-  if (!bridge_error) {
-    std::lock_guard<std::mutex> lock(g_mutex);
-    needs_default_factory = !g_offline_asr_factory;
-  }
-  if (needs_default_factory) {
-    RegisterDefaultOfflineAsrFactory();
-  }
-#endif
+  RegisterDefaultFactories();
 
-  std::unique_ptr<OfflineAsrBackend> backend;
-  {
-    std::lock_guard<std::mutex> lock(g_mutex);
-    if (!bridge_error && !g_offline_asr_factory) {
-      SetError(&bridge_error, SHERPA_ONNX_BRIDGE_UNSUPPORTED,
-               "offline-asr backend is not configured");
-    }
-    if (!bridge_error) {
-      backend = g_offline_asr_factory->Create(options, &bridge_error);
-      if (!bridge_error && !backend) {
-        SetError(&bridge_error, SHERPA_ONNX_BRIDGE_RUNTIME_ERROR,
-                 "offline-asr backend returned a null instance");
+  std::unique_ptr<Backend> backend;
+  if (!bridge_error) {
+    // Factories are never removed while the bridge is in use, so calling one
+    // outside the registry lock is safe and keeps resource creation (which can
+    // load a model for seconds) from blocking unrelated handles.
+    std::unique_ptr<BackendFactory> *factory = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(g_mutex);
+      auto it = DefaultFactories().find(kind);
+      if (it != DefaultFactories().end()) {
+        factory = &it->second;
       }
     }
-    if (!bridge_error) {
-      const uint64_t created = g_next_handle++;
-      auto entry = std::make_shared<HandleEntry>();
-      entry->backend = std::move(backend);
-      g_handles.emplace(created, std::move(entry));
-      *handle = created;
+    if (factory == nullptr) {
+      SetError(&bridge_error, SHERPA_ONNX_BRIDGE_UNSUPPORTED,
+               std::string("Unsupported resource kind: ") + kind);
+    } else {
+      backend = (*factory)->Create(options, &bridge_error);
+      if (!bridge_error && !backend) {
+        SetError(&bridge_error, SHERPA_ONNX_BRIDGE_RUNTIME_ERROR,
+                 std::string(kind) + " backend returned a null instance");
+      }
     }
+  }
+
+  if (!bridge_error) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    *handle = InsertHandleLocked(std::move(backend), kind, 0);
   }
 
   if (bridge_error) {
@@ -248,26 +390,16 @@ int32_t SherpaOnnxBridgeCall(uint64_t handle, const char *operation,
   if (!entry) {
     SetError(&bridge_error, SHERPA_ONNX_BRIDGE_INVALID_HANDLE,
              "Unknown or destroyed handle");
-  } else if (std::strcmp(operation, "offline-asr.set-audio") == 0) {
-    SetError(&bridge_error, SHERPA_ONNX_BRIDGE_UNSUPPORTED,
-             "Use SherpaOnnxBridgePushAudio for offline-asr.set-audio");
-  } else if (std::strcmp(operation, "offline-asr.transcribe") == 0) {
-    std::lock_guard<std::mutex> lock(entry->mutex);
-    if (!entry->has_audio) {
-      SetError(&bridge_error, SHERPA_ONNX_BRIDGE_INVALID_STATE,
-               "No audio has been pushed to this handle");
-    } else {
-      result = entry->backend->Transcribe(entry->pending_audio, &bridge_error);
-      if (!bridge_error) {
-        entry->pending_audio = {};
-        entry->has_audio = false;
-      }
-    }
   } else if (std::strcmp(operation, "health") == 0) {
-    result = SuccessJson();
+    result = "{\"ok\":true}";
   } else {
-    SetError(&bridge_error, SHERPA_ONNX_BRIDGE_UNSUPPORTED,
-             std::string("Unsupported operation: ") + operation);
+    std::lock_guard<std::mutex> lock(entry->mutex);
+    if (!entry->backend) {
+      SetError(&bridge_error, SHERPA_ONNX_BRIDGE_INVALID_HANDLE,
+               "Handle was destroyed");
+    } else {
+      result = entry->backend->Call(operation, arguments_json, &bridge_error);
+    }
   }
 
   if (bridge_error) {
@@ -299,12 +431,76 @@ int32_t SherpaOnnxBridgePushAudio(uint64_t handle, const char *operation,
     return SHERPA_ONNX_BRIDGE_INVALID_ARGUMENT;
   }
 
-  if (std::strcmp(operation, "offline-asr.set-audio") != 0) {
+  std::shared_ptr<HandleEntry> entry;
+  {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    entry = FindHandle(handle);
+  }
+  if (!entry) {
     if (error != nullptr) {
-      *error = DuplicateString(std::string("Unsupported audio operation: ") +
-                               operation);
+      *error = DuplicateString("Unknown or destroyed handle");
     }
-    return SHERPA_ONNX_BRIDGE_UNSUPPORTED;
+    return SHERPA_ONNX_BRIDGE_INVALID_HANDLE;
+  }
+
+  Audio audio;
+  audio.sample_rate = sample_rate;
+  if (num_samples > 0) {
+    audio.samples.assign(samples, samples + num_samples);
+  }
+
+  Error bridge_error;
+  {
+    std::lock_guard<std::mutex> lock(entry->mutex);
+    if (!entry->backend) {
+      SetError(&bridge_error, SHERPA_ONNX_BRIDGE_INVALID_HANDLE,
+               "Handle was destroyed");
+    } else {
+      entry->backend->PushAudio(operation, audio, &bridge_error);
+    }
+  }
+
+  if (bridge_error) {
+    if (error != nullptr) {
+      *error = DuplicateString(bridge_error.message);
+    }
+    return bridge_error.status;
+  }
+  return SHERPA_ONNX_BRIDGE_OK;
+}
+
+int32_t SherpaOnnxBridgePullAudio(uint64_t handle, const char *operation,
+                                  const char *arguments_json,
+                                  int32_t *sample_rate, float **samples,
+                                  int32_t *num_samples, char **result_json,
+                                  char **error) {
+  using namespace sherpa_onnx::bridge;
+
+  if (error != nullptr) {
+    *error = nullptr;
+  }
+  if (result_json != nullptr) {
+    *result_json = nullptr;
+  }
+  if (samples != nullptr) {
+    *samples = nullptr;
+  }
+  if (num_samples != nullptr) {
+    *num_samples = 0;
+  }
+  if (sample_rate != nullptr) {
+    *sample_rate = 0;
+  }
+
+  if (operation == nullptr || samples == nullptr || num_samples == nullptr ||
+      sample_rate == nullptr) {
+    if (error != nullptr) {
+      *error = DuplicateString("Invalid audio output arguments");
+    }
+    return SHERPA_ONNX_BRIDGE_INVALID_ARGUMENT;
+  }
+  if (arguments_json == nullptr) {
+    arguments_json = "{}";
   }
 
   std::shared_ptr<HandleEntry> entry;
@@ -319,36 +515,80 @@ int32_t SherpaOnnxBridgePushAudio(uint64_t handle, const char *operation,
     return SHERPA_ONNX_BRIDGE_INVALID_HANDLE;
   }
 
-  std::lock_guard<std::mutex> lock(entry->mutex);
-  if (entry->has_audio && entry->pending_audio.sample_rate != sample_rate) {
-    if (error != nullptr) {
-      *error = DuplicateString(
-          "All audio pushed for one transcription must use the same sample rate");
+  Error bridge_error;
+  Audio audio;
+  std::string result;
+  {
+    std::lock_guard<std::mutex> lock(entry->mutex);
+    if (!entry->backend) {
+      SetError(&bridge_error, SHERPA_ONNX_BRIDGE_INVALID_HANDLE,
+               "Handle was destroyed");
+    } else {
+      result = entry->backend->PullAudio(operation, arguments_json, &audio,
+                                         &bridge_error);
     }
-    return SHERPA_ONNX_BRIDGE_INVALID_ARGUMENT;
   }
 
-  entry->pending_audio.sample_rate = sample_rate;
-  if (num_samples > 0) {
-    entry->pending_audio.samples.insert(entry->pending_audio.samples.end(),
-                                        samples, samples + num_samples);
+  if (bridge_error) {
+    if (error != nullptr) {
+      *error = DuplicateString(bridge_error.message);
+    }
+    return bridge_error.status;
   }
-  entry->has_audio = true;
+
+  if (!audio.samples.empty()) {
+    auto *copy =
+        static_cast<float *>(std::malloc(sizeof(float) * audio.samples.size()));
+    if (copy == nullptr) {
+      if (error != nullptr) {
+        *error = DuplicateString("Failed to allocate audio output buffer");
+      }
+      return SHERPA_ONNX_BRIDGE_RUNTIME_ERROR;
+    }
+    std::memcpy(copy, audio.samples.data(), sizeof(float) * audio.samples.size());
+    *samples = copy;
+    *num_samples = static_cast<int32_t>(audio.samples.size());
+    *sample_rate = audio.sample_rate;
+  }
+
+  if (result_json != nullptr) {
+    *result_json = DuplicateString(result);
+  }
   return SHERPA_ONNX_BRIDGE_OK;
 }
 
 void SherpaOnnxBridgeDestroy(uint64_t handle) {
-  std::shared_ptr<sherpa_onnx::bridge::HandleEntry> entry;
+  using namespace sherpa_onnx::bridge;
+
+  std::vector<std::shared_ptr<HandleEntry>> removed;
   {
-    std::lock_guard<std::mutex> lock(sherpa_onnx::bridge::g_mutex);
-    auto it = sherpa_onnx::bridge::g_handles.find(handle);
-    if (it != sherpa_onnx::bridge::g_handles.end()) {
-      entry = std::move(it->second);
-      sherpa_onnx::bridge::g_handles.erase(it);
+    std::lock_guard<std::mutex> lock(g_mutex);
+    std::vector<uint64_t> pending = {handle};
+    while (!pending.empty()) {
+      const uint64_t current = pending.back();
+      pending.pop_back();
+      auto entry = RemoveHandleLocked(current);
+      if (!entry) {
+        continue;
+      }
+      pending.insert(pending.end(), entry->children.begin(),
+                     entry->children.end());
+      entry->children.clear();
+      removed.push_back(std::move(entry));
     }
+  }
+
+  // The registry no longer holds these entries, but an in-flight call may. Take
+  // each entry mutex before releasing the backend so destruction cannot race a
+  // running operation.
+  for (auto &entry : removed) {
+    std::lock_guard<std::mutex> lock(entry->mutex);
+    entry->backend.reset();
   }
 }
 
 void SherpaOnnxBridgeFree(char *ptr) { std::free(ptr); }
+
+void SherpaOnnxBridgeFreeAudio(float *ptr) { std::free(ptr); }
 
 }  // extern "C"
