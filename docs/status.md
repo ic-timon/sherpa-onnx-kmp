@@ -35,10 +35,19 @@ Last updated: 2026-10-28
   runtime. The earlier aggregate static archive could not link: the C++ graph is
   built against the host glibc/libstdc++, while Kotlin/Native links with the
   glibc 2.19 konan sysroot. See ADR 0008.
+- Both Linux architectures also ship `libsherpa-onnx-portable-bridge.so`, the
+  bridge's `SONAME`. Linking uses the Kotlin alias, but the loader resolves the
+  `DT_NEEDED` name recorded from that `SONAME`, so shipping only the alias
+  produced binaries that exited 127 at startup.
 - The Web Emscripten build now uses upstream's supported
   `SHERPA_ONNX_ENABLE_WASM` path, which pins the `onnxruntime-wasm-static_lib`
   package. Upstream's downloader otherwise rejects Emscripten outright.
-- The web transport is not implemented yet.
+- The Web Worker transport is implemented for Kotlin/JS: `WebWorkerTransport`
+  serializes bridge calls across the worker boundary, transfers audio as a
+  `Float32Array` buffer, and backs `HttpModelStore`/`MemoryModelStore`.
+- The Emscripten bridge builds and its C ABI is verified on the JS glue surface.
+  At `-O3` Emscripten renames the internal Wasm export table, so the check
+  asserts the stable `Module['_SherpaOnnxBridge*']` names the worker calls.
 - An upstream RFC/issue has not been opened yet.
 
 ## Accepted direction
@@ -67,5 +76,6 @@ Last updated: 2026-10-28
 ## Immediate workstreams
 
 1. Complete the physical iPhone release gate when hardware is available.
-2. Implement the Web Worker transport.
+2. Run the web sample against the pinned model in a real browser and record the
+   result, then close the 0.6.0 gate.
 3. Build the complete platform packaging and release matrix.
