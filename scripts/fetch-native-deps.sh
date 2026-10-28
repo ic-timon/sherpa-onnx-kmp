@@ -69,11 +69,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   if [[ ! -f "$cache/$onnxruntime_name" ]] || \
      [[ "$(sha256 "$cache/$onnxruntime_name")" != "$onnxruntime_hash" ]]; then
     if command -v gh >/dev/null 2>&1; then
-      gh release download v1.28.2 \
-        --repo csukuangfj/onnxruntime-libs \
-        --pattern "$onnxruntime_name" \
-        --dir "$cache" \
-        --clobber
+      gh_release_download v1.28.2 csukuangfj/onnxruntime-libs "$onnxruntime_name" "$cache"
     else
       download \
         "https://github.com/csukuangfj/onnxruntime-libs/releases/download/v1.28.2/$onnxruntime_name" \
@@ -89,11 +85,7 @@ if [[ "${SHERPA_ONNX_KMP_FETCH_APPLE:-0}" == "1" ]]; then
   if [[ ! -f "$cache/$ios_onnxruntime_name" ]] || \
      [[ "$(sha256 "$cache/$ios_onnxruntime_name")" != "$ios_onnxruntime_hash" ]]; then
     if command -v gh >/dev/null 2>&1; then
-      gh release download v1.28.2 \
-        --repo csukuangfj/onnxruntime-libs \
-        --pattern "$ios_onnxruntime_name" \
-        --dir "$cache" \
-        --clobber
+      gh_release_download v1.28.2 csukuangfj/onnxruntime-libs "$ios_onnxruntime_name" "$cache"
     else
       download \
         "https://github.com/csukuangfj/onnxruntime-libs/releases/download/v1.28.2/$ios_onnxruntime_name" \
@@ -107,11 +99,7 @@ if [[ "${SHERPA_ONNX_KMP_FETCH_ANDROID:-0}" == "1" ]]; then  android_name=onnxru
   if [[ ! -f "$cache/$android_name" ]] || \
      [[ "$(sha256 "$cache/$android_name")" != "$android_hash" ]]; then
     if command -v gh >/dev/null 2>&1; then
-      gh release download v1.28.2 \
-        --repo csukuangfj/onnxruntime-libs \
-        --pattern "$android_name" \
-        --dir "$cache" \
-        --clobber
+      gh_release_download v1.28.2 csukuangfj/onnxruntime-libs "$android_name" "$cache"
     else
       download \
         "https://github.com/csukuangfj/onnxruntime-libs/releases/download/v1.28.2/$android_name" \
@@ -128,11 +116,7 @@ if [[ "${SHERPA_ONNX_KMP_FETCH_DESKTOP:-0}" == "1" ]]; then
     if [[ ! -f "$cache/$name" ]] || \
        [[ "$(sha256 "$cache/$name")" != "$hash" ]]; then
       if command -v gh >/dev/null 2>&1; then
-        gh release download v1.28.2 \
-          --repo csukuangfj/onnxruntime-libs \
-          --pattern "$name" \
-          --dir "$cache" \
-          --clobber
+        gh_release_download v1.28.2 csukuangfj/onnxruntime-libs "$name" "$cache"
       else
         download \
           "https://github.com/csukuangfj/onnxruntime-libs/releases/download/v1.28.2/$name" \

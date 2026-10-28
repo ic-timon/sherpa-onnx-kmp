@@ -42,11 +42,7 @@ fetch() {
     fi
   fi
   printf 'downloading: %s\n' "$name"
-  gh release download "$tag" \
-    --repo k2-fsa/sherpa-onnx \
-    --pattern "$name" \
-    --dir "$root" \
-    --clobber
+  gh_release_download "$tag" k2-fsa/sherpa-onnx "$name" "$root"
 }
 
 # Silero VAD: 643 KB. `asr-models` carries the ONNX file directly, plus a

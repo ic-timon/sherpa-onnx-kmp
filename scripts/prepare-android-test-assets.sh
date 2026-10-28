@@ -12,11 +12,7 @@ model_root="$cache/sherpa-onnx-nemo-ctc-fa-shenava-rizeh-pizeh-v1.0-non-streamin
 if [[ ! -f "$archive" ]]; then
   mkdir -p "$cache"
   if command -v gh >/dev/null 2>&1; then
-    gh release download asr-models \
-      --repo k2-fsa/sherpa-onnx \
-      --pattern "$archive_name" \
-      --dir "$cache" \
-      --clobber
+    gh_release_download asr-models k2-fsa/sherpa-onnx "$archive_name" "$cache"
   else
     download \
       "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/$archive_name" \

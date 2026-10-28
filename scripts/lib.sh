@@ -32,3 +32,31 @@ download() {
 cache_root() {
   printf '%s\n' "${XDG_CACHE_HOME:-$HOME/.cache}/sherpa-onnx-kmp"
 }
+
+# `gh release download` reaches api.github.com, which intermittently times out
+# on hosted CI runners. Retry with linear backoff so a transient network error
+# does not fail a whole workflow.
+gh_release_download() {
+  local tag=$1
+  local repo=$2
+  local pattern=$3
+  local dir=$4
+  local attempt=1
+  local max_attempts="${SHERPA_ONNX_KMP_DOWNLOAD_ATTEMPTS:-4}"
+  while true; do
+    if gh release download "$tag" \
+        --repo "$repo" \
+        --pattern "$pattern" \
+        --dir "$dir" \
+        --clobber; then
+      return 0
+    fi
+    if (( attempt >= max_attempts )); then
+      echo "giving up on $pattern after $attempt attempts" >&2
+      return 1
+    fi
+    echo "retrying $pattern (attempt $((attempt + 1))/$max_attempts) after a network error" >&2
+    sleep "$(( attempt * 5 ))"
+    attempt=$((attempt + 1))
+  done
+}
