@@ -48,6 +48,11 @@ jobs:
         with:
           version: 4.0.11
           actions-cache-folder: emsdk-cache
+      # `build-web-emscripten.sh` loads the built module to verify that it
+      # advertises the same resources as the native transports.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
       - name: Verify Emscripten
         run: emcc --version
       - name: Cache native dependencies
@@ -65,9 +70,9 @@ jobs:
       - name: Inspect the Wasm bridge module
         run: |
           # `scripts/build-web-emscripten.sh` already asserted the JS glue
-          # surface, which is what the worker calls. This step only confirms the
-          # two artifacts exist and that the Wasm module exports a plausible
-          # number of functions, so a truncated or empty module cannot ship.
+          # surface and the capability report. This step confirms that the Wasm
+          # module exports a plausible number of functions, so a truncated or
+          # empty module cannot ship.
           test -f build/web/sherpa-onnx-bridge.js
           test -f build/web/sherpa-onnx-bridge.wasm
           wasm-objdump -x build/web/sherpa-onnx-bridge.wasm > /tmp/wasm-exports.txt 2>/dev/null || \

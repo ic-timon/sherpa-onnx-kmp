@@ -59,13 +59,17 @@ jobs:
         run: ./scripts/build-apple-native.sh all
       - name: Prepare pinned model
         run: ./scripts/prepare-apple-sample-assets.sh
+      - name: Prepare feature models
+        run: ./scripts/prepare-feature-models.sh
       - name: Run macOS native integration test
         run: |
           export SHERPA_ONNX_KMP_TEST_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/models/sherpa-onnx-nemo-ctc-fa-shenava-rizeh-pizeh-v1.0-non-streaming-int8-2026-06-26"
+          export SHERPA_ONNX_KMP_FEATURE_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/feature-models"
           ./gradlew :sherpa-onnx-kmp:macosArm64Test --stacktrace
       - name: Run iOS simulator integration test
         run: |
           export SHERPA_ONNX_KMP_TEST_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/models/sherpa-onnx-nemo-ctc-fa-shenava-rizeh-pizeh-v1.0-non-streaming-int8-2026-06-26"
+          export SHERPA_ONNX_KMP_FEATURE_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/feature-models"
           device=$(xcrun simctl list devices available -j | jq -r '
             first(.devices[][] |
               select(.isAvailable and (.name | startswith("iPhone"))) | .name) // empty
@@ -76,6 +80,10 @@ jobs:
           fi
           ./gradlew :sherpa-onnx-kmp:iosSimulatorArm64Test --device "$device" --stacktrace
       - name: Build and verify XCFramework
-        run: SHERPA_ONNX_KMP_SKIP_NATIVE=1 ./scripts/package-apple-xcframework.sh 0.4.0
+        env:
+          RELEASE_VERSION: 1.0.0
+        run: SHERPA_ONNX_KMP_SKIP_NATIVE=1 ./scripts/package-apple-xcframework.sh "$RELEASE_VERSION"
       - name: Build and run Apple samples
-        run: ./scripts/test-apple-samples.sh 0.4.0
+        env:
+          RELEASE_VERSION: 1.0.0
+        run: ./scripts/test-apple-samples.sh "$RELEASE_VERSION"

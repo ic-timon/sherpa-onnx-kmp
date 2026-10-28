@@ -2,53 +2,74 @@
 
 Last updated: 2026-10-28
 
+Status: 1.0.0 stable
+
 ## Current state
 
-- Public repository created.
-- Terminal architecture documented.
-- Platform boundaries documented.
-- KMP Gradle project exists under `sherpa-onnx-kmp/`.
-- Public contract layer compiles for JVM, JS, iOS simulator, macOS arm64,
-  Linux x64/arm64, and Windows x64.
-- JVM and JS Node contract tests pass.
-- v0.3.0 JVM and Android integration is released.
-- JVM JNI transport works with both explicit native paths and classpath native
-  JAR extraction.
-- Android AAR is built for arm64-v8a, armeabi-v7a, x86, and x86_64.
-- JVM CLI and Android arm64 emulator tests pass with a pinned model.
-- Android sample app builds.
-- v0.4.0 Apple integration is released as a preview for iOS and Apple Silicon
-  macOS. The prerelease attaches the signed self-contained
-  `SherpaOnnxKmp.xcframework.zip` and its SHA-256 checksum.
-- Kotlin/Native cinterop, `FileModelStore`, and `BundleModelStore` are working.
-- macOS arm64 and iOS Simulator transcribe the pinned model.
-- The self-contained Apple XCFramework builds, signs, and contains no external
-  ONNX Runtime framework.
-- The iOS sample installs, launches, and transcribes in Simulator.
-- The iOS device slice and sample app link without a physical device.
-- Native desktop (`linuxX64`, `linuxArm64`, `mingwX64`) shares
-  `NativePortableTransport` with Apple in `nativeMain`.
-- `FileModelStore` works on Linux and Windows; `BundleModelStore` is Apple-only.
-- Linux and Windows native libraries build with dedicated scripts and CI jobs.
-- Linux ships a shared bridge library
-  (`libsherpa-onnx-kmp-native-desktop.so`) with `libonnxruntime.so` as a sibling
-  runtime. The earlier aggregate static archive could not link: the C++ graph is
-  built against the host glibc/libstdc++, while Kotlin/Native links with the
-  glibc 2.19 konan sysroot. See ADR 0008.
-- Both Linux architectures also ship `libsherpa-onnx-portable-bridge.so`, the
-  bridge's `SONAME`. Linking uses the Kotlin alias, but the loader resolves the
-  `DT_NEEDED` name recorded from that `SONAME`, so shipping only the alias
-  produced binaries that exited 127 at startup.
-- The Web Emscripten build now uses upstream's supported
-  `SHERPA_ONNX_ENABLE_WASM` path, which pins the `onnxruntime-wasm-static_lib`
-  package. Upstream's downloader otherwise rejects Emscripten outright.
-- The Web Worker transport is implemented for Kotlin/JS: `WebWorkerTransport`
-  serializes bridge calls across the worker boundary, transfers audio as a
-  `Float32Array` buffer, and backs `HttpModelStore`/`MemoryModelStore`.
-- The Emscripten bridge builds and its C ABI is verified on the JS glue surface.
-  At `-O3` Emscripten renames the internal Wasm export table, so the check
-  asserts the stable `Module['_SherpaOnnxBridge*']` names the worker calls.
-- An upstream RFC/issue has not been opened yet.
+The terminal architecture in [`design.md`](design.md) is implemented for every
+target family it names. 1.0.0 freezes the public API, the bridge ABI, and the
+result schema; the compatibility contract is in
+[`versioning.md`](versioning.md).
+
+### Targets
+
+- Android (`androidTarget`, JNI): AAR for arm64-v8a, armeabi-v7a, x86, x86_64.
+  Device suite passes on an API 36.1 arm64 emulator, including the packaged
+  bridge's exported-symbol and capability checks.
+- iOS (`iosArm64`, `iosSimulatorArm64`) and macOS (`macosArm64`): one shared
+  Kotlin/Native cinterop transport in `nativeMain`. Simulator arm64 and macOS
+  arm64 run the shared contract suite and the eight real-model feature suites.
+  The device slice builds, links, and signs.
+- Linux (`linuxX64`, `linuxArm64`) and Windows (`mingwX64`): the same transport,
+  different linking. Linux ships a shared bridge with a sibling
+  `libonnxruntime.so`; Windows ships a DLL with static ONNX Runtime. See ADR 0007
+  and ADR 0008.
+- JVM: JNI transport shared with Android, with native-library discovery either
+  from an explicit path or from a classpath native JAR.
+- Web (Kotlin/JS): Emscripten module in a dedicated Web Worker. The build now
+  enables TTS and speaker diarization, so the browser advertises the same ten
+  resources as the native builds.
+
+### Feature surface
+
+All eight features are implemented in `commonMain` on top of one option mapper
+and one result mapper: offline ASR, streaming ASR, VAD, TTS, keyword spotting,
+punctuation, speaker diarization, and speech enhancement.
+
+`SherpaCapabilities.features` is derived from the bridge's resource list, so a
+build that omits a feature says so instead of failing at call time.
+
+### Bridge
+
+- ABI version 2, schema version 1.
+- 10 resources, 35 operations.
+- `SherpaOnnxBridgePushAudio` and `SherpaOnnxBridgePullAudio` carry streaming
+  input and generated audio out of band; JSON never carries samples.
+- The only upstream prerequisite remains
+  `patches/0001-parse-options-try-set-option.patch`.
+
+### Verification recorded for this release
+
+- `jvmTest` 45, `jsNodeTest` 36, `jsBrowserTest` 36, `macosArm64Test` 42,
+  `iosSimulatorArm64Test` 42, Android device 2 — all passing.
+- Eight real-model feature suites on JVM, macOS arm64, and iOS Simulator.
+- Bridge C ABI probe: ABI integer, 10 resources, 35 operations, typed failures,
+  real TTS synthesis and audio pull.
+- Release hardening: header/library ABI agreement, dependency audit, bounded
+  memory growth over repeated create/destroy.
+- Capability parity probe for the web module.
+- Chrome transcribes the pinned model through the worker path.
+
+## Known gaps
+
+- Physical iOS and Android device runs are documented gates, not automated CI.
+  The iOS device slice builds, links, and signs; the Android device suite runs on
+  an emulator.
+- `linuxArm64` and Windows are built and tested in CI on native runners, not on
+  the development host.
+- The glibc floor on Linux is the build host's, not a policy value.
+- Core ML is not enabled on Apple; CPU only.
+- No upstream RFC or issue has been opened for the `TrySetOption` patch.
 
 ## Accepted direction
 
@@ -65,17 +86,20 @@ Last updated: 2026-10-28
 - JVM remains supported for Compose Desktop, Windows ARM64, Intel macOS, and
   Java interoperability.
 
-## Open release gates
+## Open decisions
 
-- Run Apple inference on a physical iPhone and record the device, OS version,
-  model checksum, and transcript before marking Apple support stable.
-- Whether iOS x64 and macOS x64 remain compatibility-only targets.
-- Minimum supported browser versions for the web target.
-- Repository publication coordinates and release automation.
+These are deferred deliberately, not unfinished:
+
+- Whether iOS x64 and macOS x64 remain compatibility-only JVM targets.
+- Minimum supported browser versions beyond "WebAssembly SIMD required".
+- Repository publication coordinates (Maven Central and the Apple registry).
+- Whether Core ML becomes an opt-in provider.
+- Whether the physical-device gates become automated through a hosted runner.
 
 ## Immediate workstreams
 
-1. Complete the physical iPhone release gate when hardware is available.
-2. Run the web sample against the pinned model in a real browser and record the
-   result, then close the 0.6.0 gate.
-3. Build the complete platform packaging and release matrix.
+1. Publish 1.0.0 artifacts with checksums and attach them to the release.
+2. Record physical-device runs for iOS and Android when hardware is available.
+3. Publish to the chosen Maven and Apple coordinates.
+4. Track upstream sherpa-onnx releases and extend the pinned core range after the
+   bridge suite passes against them.

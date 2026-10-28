@@ -154,6 +154,8 @@ published or attached to the repository.
 
 ## 0.6.0 Web
 
+Status: released. See [release notes](release-0.6.0.md).
+
 ### Scope
 
 - Kotlin/JS transport.
@@ -180,6 +182,8 @@ published or attached to the repository.
 
 ## 0.7.0 Streaming ASR and VAD
 
+Status: released.
+
 ### Scope
 
 - Online recognizer and online session APIs.
@@ -201,6 +205,8 @@ published or attached to the repository.
 - Updated API and samples for all available transports.
 
 ## 0.8.0 TTS, KWS, and Full Feature Surface
+
+Status: released.
 
 ### Scope
 
@@ -226,6 +232,19 @@ published or attached to the repository.
 - Expanded platform capability matrix.
 
 ## 0.9.0 Release Hardening
+
+Status: released. The hardening checks are `scripts/check-release-hardening.sh`
+(header/library ABI agreement, dependency audit, bounded memory growth over
+repeated create/destroy), `scripts/test-bridge-abi.sh` (ABI integer, resources,
+operations, typed failures, real TTS), and `scripts/benchmark-release.sh`
+(versioned performance snapshot).
+
+Two acceptance items are recorded as evidence rather than tooling: the API
+compatibility check is the frozen public surface in
+[`versioning.md`](versioning.md) plus the unchanged upstream bindings, and
+"reproducible or documented inputs" is satisfied by pinned dependencies with
+checksums in `scripts/fetch-native-deps.sh`; the C++ graph itself is not
+bit-reproducible across build hosts.
 
 ### Scope
 
@@ -254,6 +273,8 @@ published or attached to the repository.
 
 ## 1.0.0 Stable
 
+Status: released. See [release notes](release-1.0.0.md).
+
 ### Scope
 
 - Stable public API and bridge schema.
@@ -270,6 +291,19 @@ published or attached to the repository.
 - Physical Android and iOS device tests are documented for each release.
 - The bridge ABI version and supported sherpa-onnx core versions are published.
 - No accepted ADR is unimplemented.
+
+### Recorded deviations
+
+Two acceptance items cannot be satisfied without hardware or a second browser
+engine on the project's runners, and are recorded instead of silently dropped:
+
+- Physical Android and iOS device runs need hardware. The iOS device slice
+  builds, links, and signs; the Android device suite runs on an API 36.1 arm64
+  emulator. Both are documented in [`migration-1.0.md`](migration-1.0.md) and
+  [`status.md`](status.md) as gates.
+- The browser e2e suite runs Chrome in CI. Firefox uses the same worker and
+  Wasm code path and is selectable with `SHERPA_ONNX_KMP_WEB_BROWSER=firefox`,
+  but is not a CI gate.
 
 ### Artifacts
 

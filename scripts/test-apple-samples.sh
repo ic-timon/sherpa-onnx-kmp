@@ -6,7 +6,7 @@ source "$(dirname "$0")/lib.sh"
 repo_root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$repo_root"
 
-version="${1:-0.4.0}"
+version="${1:-1.0.0}"
 xcframework="$repo_root/build/release/$version/SherpaOnnxKmp.xcframework"
 project="$repo_root/samples/apple/SherpaKmpSamples.xcodeproj"
 derived="$repo_root/build/apple/sample-test"

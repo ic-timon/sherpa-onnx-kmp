@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "com.k2fsa.sherpa.onnx"
-version = "0.5.0"
+version = "1.0.0"
 
 val appleTestModelDir = providers.environmentVariable("SHERPA_ONNX_KMP_TEST_MODEL_DIR")
     .orNull

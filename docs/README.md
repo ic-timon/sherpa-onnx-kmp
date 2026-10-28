@@ -15,3 +15,7 @@
 - [Release 0.3.0 artifacts](release-0.3.0.md)
 - [Release 0.4.0 artifacts](release-0.4.0.md)
 - [Release 0.5.0 artifacts](release-0.5.0.md)
+- [Release 0.6.0 web](release-0.6.0.md)
+- [Release 1.0.0 stable](release-1.0.0.md)
+- [Versioning and compatibility](versioning.md)
+- [Migration guide 0.4.0 → 1.0.0](migration-1.0.md)

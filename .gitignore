@@ -47,3 +47,7 @@ sherpa-onnx-kmp/src/androidMain/jniLibs/**/*.so
 # Apple sample model assets are populated from the pinned test model
 samples/apple/iOS/SherpaKmpSample/SherpaModels/models/*
 !samples/apple/iOS/SherpaKmpSample/SherpaModels/models/README.txt
+
+# Python bytecode from the release helper scripts
+__pycache__/
+*.pyc

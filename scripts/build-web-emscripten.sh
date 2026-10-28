@@ -50,6 +50,14 @@ fi
 # under `wasm/`, and `wasm/asr/CMakeLists.txt` aborts configuration unless
 # model files were pre-downloaded into `wasm/asr/assets`. The bridge links
 # `sherpa-onnx-core` directly and does not need any demo target.
+# Feature parity. The web target is a supported target family, so it must expose
+# the same resource kinds as the native transports; a capability report that is
+# narrower on the web than everywhere else is a support gap, not a build choice.
+#
+# TTS is the one costly option: upstream gates it behind `SHERPA_ONNX_ENABLE_TTS`
+# and VITS adds a text frontend, so the Wasm module grows. Speaker diarization
+# pulls in clustering and is gated separately. Both are enabled here so
+# `capabilities` matches the desktop builds.
 emcmake cmake -S native -B "$build_dir" \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_SHARED_LIBS=OFF \
@@ -60,8 +68,8 @@ emcmake cmake -S native -B "$build_dir" \
   -DSHERPA_ONNX_ENABLE_WEBSOCKET=OFF \
   -DSHERPA_ONNX_ENABLE_PORTAUDIO=OFF \
   -DSHERPA_ONNX_ENABLE_BINARY=OFF \
-  -DSHERPA_ONNX_ENABLE_TTS=OFF \
-  -DSHERPA_ONNX_ENABLE_SPEAKER_DIARIZATION=OFF
+  -DSHERPA_ONNX_ENABLE_TTS=ON \
+  -DSHERPA_ONNX_ENABLE_SPEAKER_DIARIZATION=ON
 
 cmake --build "$build_dir" -j "$jobs" --target sherpa-onnx-bridge-web
 
@@ -80,6 +88,17 @@ done
 
 printf 'Web bridge: %s\n' "$out_dir/sherpa-onnx-bridge.js"
 printf 'Wasm module: %s\n' "$out_dir/sherpa-onnx-bridge.wasm"
+
+# The web target must advertise the same resources as the native transports.
+# This loads the real module and reads its capability report, so a configure
+# that silently drops a feature (upstream gates TTS and diarization behind
+# separate options) fails here instead of at runtime.
+if command -v node >/dev/null 2>&1; then
+  node "$repo_root/scripts/check-web-capabilities.cjs" "$out_dir"
+else
+  echo "node is required to verify the web capability surface" >&2
+  exit 1
+fi
 
 # Fail loudly if the bridge entry points disappeared from the surface the worker
 # actually calls.

@@ -1,6 +1,6 @@
 # Web Transport
 
-Status: v0.6.0
+Status: v1.0.0
 
 ## Targets
 
@@ -140,8 +140,18 @@ assembly step copies the whole `*.mjs` set instead of a single file.
 ## Capabilities
 
 `SherpaOnnxBridgeInfoJson` is produced by the same bridge code as the native
-targets, so the reported feature set reflects the Emscripten export list. A
-feature absent from the Wasm build fails at creation time with
+targets. The Emscripten build enables TTS and speaker diarization, so the browser
+reports the same ten resources and 35 operations as the native libraries.
+
+That is asserted, not assumed: `scripts/build-web-emscripten.sh` runs
+`scripts/check-web-capabilities.cjs`, which loads the built module in a
+worker-shaped context, reads the capability JSON, and fails if any expected
+resource or operation is missing. The upstream configure gates TTS and
+diarization behind `SHERPA_ONNX_ENABLE_TTS` and
+`SHERPA_ONNX_ENABLE_SPEAKER_DIARIZATION`, so a dropped `-D` flag would otherwise
+produce a module that still builds and runs, just with a smaller feature set.
+
+A feature absent from the Wasm build fails at creation time with
 `SherpaUnsupportedException` instead of silently degrading.
 
 ## Limits

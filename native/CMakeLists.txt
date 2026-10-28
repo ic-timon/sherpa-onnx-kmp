@@ -25,6 +25,20 @@ set(SHERPA_ONNX_ENABLE_TTS ON CACHE BOOL "" FORCE)
 set(SHERPA_ONNX_ENABLE_SPEAKER_DIARIZATION ON CACHE BOOL "" FORCE)
 set(SHERPA_ONNX_ENABLE_BINARY OFF CACHE BOOL "" FORCE)
 
+# 32-bit Android libc never exported __tls_get_addr, and neither does the
+# 64-bit x86 stub at API 21. The NDK toolchain therefore compiles those ABIs
+# with -femulated-tls, which rewrites `thread_local` into a call to
+# __emutls_get_address. Upstream sherpa-onnx turns on IPO/LTO for shared
+# Release builds, and the LTO backend re-materializes the `thread_local`
+# access at link time without the emulated-TLS flag, so the final link fails
+# with an undefined __tls_get_addr from normal-data-generator.cc. Push the
+# same option to the LTO plugin for the affected ABIs only. aarch64 links
+# through TLSDESC and needs neither.
+if(ANDROID AND ANDROID_ABI MATCHES "^(armeabi-v7a|x86|x86_64)$")
+  add_compile_options(-femulated-tls)
+  add_link_options(-femulated-tls "SHELL:-Wl,-plugin-opt=-emulated-tls")
+endif()
+
 # v0.4 Apple builds support CPU only. The static macOS ONNX Runtime package
 # also does not include the CoreML provider factory, so keep the bridge
 # self-contained instead of leaving an unresolved CoreML symbol.

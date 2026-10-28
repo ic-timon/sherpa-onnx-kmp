@@ -3,8 +3,10 @@
 Kotlin Multiplatform bindings and a portable native bridge for
 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx).
 
-> Status: v0.5.0 adds native desktop for Linux x64/arm64 and Windows x64.
-> Apple support remains a preview.
+> Status: v1.0.0 stable. The public API, the Portable Bridge ABI, and the result
+> schema are frozen under semantic versioning. See
+> [docs/versioning.md](docs/versioning.md) for the compatibility contract and
+> [docs/platform-matrix.md](docs/platform-matrix.md) for what each target ships.
 
 ## Goal
 
@@ -50,6 +52,35 @@ Java, Kotlin, and Swift APIs remain unchanged.
 See [Releases](https://github.com/ic-timon/sherpa-onnx-kmp/releases) for published
 versions and [docs/roadmap.md](docs/roadmap.md) for the release gates.
 
+## Features
+
+Every feature is available on every supported target family, through one typed
+API and one native bridge. Capabilities are discovered at runtime, not assumed.
+
+| Feature | Entry point |
+| --- | --- |
+| Offline ASR | `createOfflineRecognizer` |
+| Streaming ASR | `createOnlineRecognizer` → `openStream`, `push`, `finish` |
+| Voice activity detection | `createVoiceActivityDetector` |
+| Text to speech | `createOfflineTts` → `Flow<AudioChunk>` |
+| Keyword spotting | `createKeywordSpotter` |
+| Punctuation restoration | `createPunctuation` |
+| Speaker diarization | `createSpeakerDiarization` |
+| Speech enhancement | `createSpeechEnhancer` |
+
+```kotlin
+val runtime = createSherpaRuntime(modelStore)
+val recognizer = runtime.createOfflineRecognizer(config)
+val result = recognizer.transcribe(AudioData(samples, 16_000))
+println(result.text)
+```
+
+```text
+runtime.capabilities.features
+  -> {OFFLINE_ASR, ONLINE_ASR, VAD, TTS, KEYWORD_SPOTTING,
+      PUNCTUATION, SPEAKER_DIARIZATION, SPEECH_ENHANCEMENT}
+```
+
 ## Apple
 
 - Targets: `iosArm64`, `iosSimulatorArm64`, and `macosArm64`.
@@ -75,10 +106,14 @@ versions and [docs/roadmap.md](docs/roadmap.md) for the release gates.
 - [Design](docs/design.md)
 - [Version roadmap](docs/roadmap.md)
 - [Platform matrix](docs/platform-matrix.md)
+- [Versioning and compatibility](docs/versioning.md)
+- [Portable Bridge ABI](docs/bridge-abi.md)
+- [Migration guide 0.4.0 → 1.0.0](docs/migration-1.0.md)
 - [Testing strategy](docs/testing.md)
 - [Upstream changes](docs/upstream.md)
 - [Current status](docs/status.md)
 - [Architecture decision records](docs/adr/README.md)
+- [Release 1.0.0 notes](docs/release-1.0.0.md)
 
 ## Non-goals
 

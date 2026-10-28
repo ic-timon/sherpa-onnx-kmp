@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$repo_root"
 
-version="${1:-0.4.0}"
+version="${1:-1.0.0}"
 out_root="$repo_root/build/release/$version"
 out="$out_root/SherpaOnnxKmp.xcframework"
 zip="$out_root/SherpaOnnxKmp.xcframework.zip"
@@ -43,6 +43,19 @@ for framework in "${frameworks[@]}"; do
     echo "Unexpected embedded symbols in $binary (ORT=$ort_count bridge=$bridge_count)" >&2
     exit 1
   fi
+  # The framework embeds the bridge statically, so every entry point the
+  # transports call must be present. A build that predates ABI 2 would be
+  # missing the audio functions and fail only at the first streaming call.
+  for symbol in SherpaOnnxBridgeInfoJson SherpaOnnxBridgeCreate \
+                SherpaOnnxBridgeCall SherpaOnnxBridgePushAudio \
+                SherpaOnnxBridgePullAudio SherpaOnnxBridgeDestroy \
+                SherpaOnnxBridgeFree SherpaOnnxBridgeFreeAudio; do
+    count=$(nm -gU "$binary" | awk -v want="_$symbol" '$3 == want {count++} END {print count+0}')
+    if [[ "$count" != "1" ]]; then
+      echo "Framework does not export $symbol exactly once (count=$count)" >&2
+      exit 1
+    fi
+  done
 done
 
 mkdir -p "$out_root"
@@ -67,7 +80,6 @@ ditto -c -k --sequesterRsrc --keepParent "$out" "$zip"
 (
   cd "$out_root"
   shasum -a 256 "$(basename "$zip")" > "$(basename "$zip").sha256"
-  shasum -a 256 "$(basename "$zip")" > SHA256SUMS
 )
 printf 'XCFramework: %s\n' "$out"
 printf 'Archive:     %s\n' "$zip"

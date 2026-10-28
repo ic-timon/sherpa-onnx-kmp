@@ -72,16 +72,51 @@ checksums. Cache location:
 ~/.cache/sherpa-onnx-kmp/models/
 ```
 
+## Release evidence
+
+These are not unit tests: they assert properties a behavioral test cannot see.
+See [`releases.md`](releases.md) for the table of scripts.
+
+### Capability parity
+
+Each transport reads its resource list from the native build rather than from a
+compiled-in constant. `scripts/test-bridge-abi.sh` checks the desktop library,
+`scripts/check-web-capabilities.cjs` loads the built Emscripten module, and the
+Android AAR check inspects the packaged `.so` for exported symbols. A build that
+omits a feature fails a release gate instead of failing at a call site.
+
+### Memory growth
+
+`scripts/check-release-hardening.sh` runs a separate process per data point,
+synthesizes a fixed number of times, and compares peak RSS at two warm points
+past ONNX Runtime's arena plateau. Comparing a cold single iteration against a
+long run would report the arena as a leak on every release.
+
+### ABI agreement
+
+The header's `SHERPA_ONNX_BRIDGE_ABI_VERSION` and the library's runtime answer
+are compared, so a header edit that does not reach the built library fails
+immediately.
+
 ## Current host notes
 
 The current development host is an Apple Silicon Mac with:
 
 - Xcode and iOS simulators
 - Android SDK/NDK and arm64 emulators
-- Node, Chrome, Firefox, and Playwright
+- Node, Chrome, and Playwright
+- The Emscripten SDK (4.0.11)
 
-It can directly test Android emulator, iOS simulator, macOS arm64 native, JVM,
-and web. It cannot run Windows, Linux native, or physical mobile devices. The Apple
-device slice is compiled and linked, but physical iPhone execution remains a
-documented release gate. Emscripten must be installed before web integration
-builds.
+It can directly test the Android emulator, the iOS simulator, macOS arm64 native,
+JVM, and web. It cannot run Windows or Linux native builds, and it has no physical
+mobile device. The Apple device slice is compiled and linked, but physical iPhone
+execution remains a documented release gate. Emscripten must be installed before
+web integration builds.
+
+Real feature-model suites need both model directories:
+
+```bash
+export SHERPA_ONNX_KMP_TEST_MODEL_DIR=~/.cache/sherpa-onnx-kmp/models/<pinned-asr>
+export SHERPA_ONNX_KMP_FEATURE_MODEL_DIR=~/.cache/sherpa-onnx-kmp/feature-models
+./scripts/prepare-feature-models.sh
+```

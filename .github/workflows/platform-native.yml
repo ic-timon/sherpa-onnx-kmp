@@ -79,8 +79,10 @@ jobs:
             SherpaOnnxBridgeCreate \
             SherpaOnnxBridgeCall \
             SherpaOnnxBridgePushAudio \
+            SherpaOnnxBridgePullAudio \
             SherpaOnnxBridgeDestroy \
-            SherpaOnnxBridgeFree; do
+            SherpaOnnxBridgeFree \
+            SherpaOnnxBridgeFreeAudio; do
             grep -Fxq "$symbol" /tmp/exported.txt || {
               echo "Missing exported symbol: $symbol" >&2; exit 1; }
           done
@@ -170,8 +172,10 @@ jobs:
             SherpaOnnxBridgeCreate \
             SherpaOnnxBridgeCall \
             SherpaOnnxBridgePushAudio \
+            SherpaOnnxBridgePullAudio \
             SherpaOnnxBridgeDestroy \
-            SherpaOnnxBridgeFree; do
+            SherpaOnnxBridgeFree \
+            SherpaOnnxBridgeFreeAudio; do
             grep -Fxq "$symbol" /tmp/exported-arm64.txt || {
               echo "Missing exported symbol: $symbol" >&2; exit 1; }
           done
@@ -253,8 +257,10 @@ jobs:
             SherpaOnnxBridgeCreate \
             SherpaOnnxBridgeCall \
             SherpaOnnxBridgePushAudio \
+            SherpaOnnxBridgePullAudio \
             SherpaOnnxBridgeDestroy \
-            SherpaOnnxBridgeFree; do
+            SherpaOnnxBridgeFree \
+            SherpaOnnxBridgeFreeAudio; do
             grep -q "$symbol" /tmp/implib-symbols.txt || {
               echo "Import library is missing $symbol" >&2; exit 1; }
           done

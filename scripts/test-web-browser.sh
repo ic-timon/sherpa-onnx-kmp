@@ -65,7 +65,9 @@ work="$(mktemp -d)"
 server_pid=""
 cleanup() {
   if [[ -n "$server_pid" ]]; then
-    kill "$server_pid" 2>/dev/null || true
+    # Reap it inside the trap so the shell does not print a job-termination
+    # notice for a server that was killed on purpose.
+    { kill "$server_pid" 2>/dev/null && wait "$server_pid" 2>/dev/null; } || true
   fi
   rm -rf "$work"
 }
