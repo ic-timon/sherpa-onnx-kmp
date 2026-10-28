@@ -17,6 +17,13 @@ if [[ ! -d "$xcframework" ]]; then
   exit 1
 fi
 
+# The Xcode project links the version-independent build/release/current path.
+current_link="$repo_root/build/release/current"
+if [[ "$(readlink "$current_link" 2>/dev/null)" != "$version" ]]; then
+  rm -rf "$current_link"
+  ln -s "$version" "$current_link"
+fi
+
 ./scripts/prepare-apple-sample-assets.sh
 
 devices_json=$(xcrun simctl list devices available -j)
@@ -44,13 +51,27 @@ fi
 xcrun simctl bootstatus "$simulator_udid" -b >/dev/null
 
 mkdir -p "$derived"
-xcodebuild \
+
+# xcodebuild writes to a log file so a green run stays quiet. When it fails the
+# log is the only evidence, so surface it instead of exiting with a bare 65.
+xcode_build() {
+  local log=$1
+  shift
+  if xcodebuild "$@" > "$log" 2>&1; then
+    return 0
+  fi
+  echo "xcodebuild failed, tail of $log:" >&2
+  tail -60 "$log" >&2
+  return 1
+}
+
+xcode_build "$derived/macos-build.log" \
   -project "$project" \
   -scheme SherpaKmpMacOS \
   -configuration Debug \
   -destination 'platform=macOS,arch=arm64' \
   -derivedDataPath "$derived" \
-  build > "$derived/macos-build.log" 2>&1
+  build
 
 mac_output=$(
   DYLD_FRAMEWORK_PATH="$xcframework/macos-arm64" \
@@ -63,13 +84,13 @@ if [[ -z "$mac_output" ]]; then
 fi
 printf 'macOS sample transcript: %s\n' "$mac_output"
 
-xcodebuild \
+xcode_build "$derived/ios-build.log" \
   -project "$project" \
   -scheme SherpaKmpIOS \
   -configuration Debug \
   -destination "platform=iOS Simulator,id=$simulator_udid" \
   -derivedDataPath "$derived" \
-  build > "$derived/ios-build.log" 2>&1
+  build
 
 app="$derived/Build/Products/Debug-iphonesimulator/SherpaKmpIOS.app"
 bundle_id=com.k2fsa.sherpa.onnx.kmp.sample.ios
@@ -96,11 +117,11 @@ else
   exit 1
 fi
 
-xcodebuild \
+xcode_build "$derived/ios-device-build.log" \
   -project "$project" \
   -scheme SherpaKmpIOS \
   -configuration Release \
   -destination 'generic/platform=iOS' \
   -derivedDataPath "${derived}-device" \
-  build CODE_SIGNING_ALLOWED=NO > "$derived/ios-device-build.log" 2>&1
+  build CODE_SIGNING_ALLOWED=NO
 printf 'iOS device framework link: OK\n'

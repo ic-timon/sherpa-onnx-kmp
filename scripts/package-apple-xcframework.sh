@@ -82,5 +82,12 @@ ditto -c -k --sequesterRsrc --keepParent "$out" "$zip"
   shasum -a 256 "$(basename "$zip")" > "$(basename "$zip").sha256"
 )
 printf 'XCFramework: %s\n' "$out"
+# The Apple sample Xcode project links against a version-independent path so
+# that bumping the release version does not break it. Repoint that path at
+# whatever version was just packaged.
+current_link="$repo_root/build/release/current"
+rm -rf "$current_link"
+ln -s "$version" "$current_link"
+printf 'Current:     %s -> %s\n' "$current_link" "$version"
 printf 'Archive:     %s\n' "$zip"
 cat "$zip.sha256"

@@ -32,7 +32,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		104F71F007F08E3D68506CD4 /* SherpaOnnxKmp.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = SherpaOnnxKmp.xcframework; path = ../../build/release/0.4.0/SherpaOnnxKmp.xcframework; sourceTree = "<group>"; };
+		104F71F007F08E3D68506CD4 /* SherpaOnnxKmp.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = SherpaOnnxKmp.xcframework; path = ../../build/release/current/SherpaOnnxKmp.xcframework; sourceTree = "<group>"; };
 		305EFBE782CA650CC4F4D1C6 /* SherpaKmpMacOS */ = {isa = PBXFileReference; includeInIndex = 0; path = SherpaKmpMacOS; sourceTree = BUILT_PRODUCTS_DIR; };
 		38A9B5127B944514D08A8C4B /* SherpaModels */ = {isa = PBXFileReference; lastKnownFileType = folder; name = SherpaModels; path = iOS/SherpaKmpSample/SherpaModels; sourceTree = SOURCE_ROOT; };
 		5BCDCCEFE71E8388E6B390D2 /* SherpaKmpSampleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SherpaKmpSampleApp.swift; sourceTree = "<group>"; };
@@ -226,7 +226,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
-					"\"../../build/release/0.4.0\"",
+					"\"../../build/release/current\"",
 				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -364,7 +364,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
-					"\"../../build/release/0.4.0\"",
+					"\"../../build/release/current\"",
 				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -383,7 +383,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
-					"\"../../build/release/0.4.0\"",
+					"\"../../build/release/current\"",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -408,7 +408,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
-					"\"../../build/release/0.4.0\"",
+					"\"../../build/release/current\"",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
