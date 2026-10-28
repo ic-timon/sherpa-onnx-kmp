@@ -27,18 +27,19 @@ mkdir -p "$build_dir"
 
 # `SHERPA_ONNX_ENABLE_WASM` is upstream's supported WebAssembly path. Without
 # it `cmake/onnxruntime.cmake` rejects Emscripten outright ("Only support Linux,
-# macOS, Windows, and Android"), because its downloader has no Wasm branch.
-# With it, the pinned `onnxruntime-wasm-static_lib-simd` package is used.
+# macOS, Windows, and Android"), because its downloader has no Wasm branch. With
+# it, the pinned `onnxruntime-wasm-static_lib-simd` package is used, ALSA probing
+# is skipped, and `macros.h` selects the Wasm logging branch.
 #
-# The feature gates below extend the bridge to the same offline ASR surface the
-# adapter exposes on native platforms. They must stay in sync with
-# `portable-bridge`'s backend, which only uses offline ASR at this milestone.
+# Deliberately NOT set: `SHERPA_ONNX_ENABLE_WASM_ASR` and
+# `SHERPA_ONNX_ENABLE_WASM_WEB`. Those flags only gate upstream's demo targets
+# under `wasm/`, and `wasm/asr/CMakeLists.txt` aborts configuration unless
+# model files were pre-downloaded into `wasm/asr/assets`. The bridge links
+# `sherpa-onnx-core` directly and does not need any demo target.
 emcmake cmake -S native -B "$build_dir" \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_SHARED_LIBS=OFF \
   -DSHERPA_ONNX_ENABLE_WASM=ON \
-  -DSHERPA_ONNX_ENABLE_WASM_WEB=ON \
-  -DSHERPA_ONNX_ENABLE_WASM_ASR=ON \
   -DSHERPA_ONNX_SOURCE_DIR="$source_dir" \
   -DSHERPA_ONNX_KMP_BUILD_JNI=OFF \
   -DSHERPA_ONNX_KMP_BUILD_TESTS=OFF \
