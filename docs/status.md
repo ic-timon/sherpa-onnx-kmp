@@ -30,6 +30,14 @@ Last updated: 2026-10-28
   `NativePortableTransport` with Apple in `nativeMain`.
 - `FileModelStore` works on Linux and Windows; `BundleModelStore` is Apple-only.
 - Linux and Windows native libraries build with dedicated scripts and CI jobs.
+- Linux ships a shared bridge library
+  (`libsherpa-onnx-kmp-native-desktop.so`) with a static ONNX Runtime inside it.
+  The earlier aggregate static archive could not link: the C++ graph is built
+  against the host glibc/libstdc++, while Kotlin/Native links with the glibc 2.19
+  konan sysroot. See ADR 0008.
+- The Web Emscripten build now uses upstream's supported
+  `SHERPA_ONNX_ENABLE_WASM` path, which pins the `onnxruntime-wasm-static_lib`
+  package. Upstream's downloader otherwise rejects Emscripten outright.
 - The web transport is not implemented yet.
 - An upstream RFC/issue has not been opened yet.
 

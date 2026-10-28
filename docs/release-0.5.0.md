@@ -9,24 +9,27 @@ cinterop transport that Apple uses. Only linking and packaging differ.
 
 ## Artifacts
 
-- `libsherpa-onnx-kmp-native-desktop.a`
-  - `linux-x64`: aggregate static archive with bridge, sherpa-onnx, and ONNX
-    Runtime merged.
-  - `linux-arm64`: same aggregate archive built on an aarch64 host.
+- `libsherpa-onnx-kmp-native-desktop.so`
+  - `linux-x64`: shared bridge with sherpa-onnx and a static ONNX Runtime linked
+    inside it. No `libonnxruntime.so` is required.
+  - `linux-arm64`: same shared library, built by cross-compiling with the
+    aarch64 toolchain.
 - `sherpa-onnx-portable-bridge.dll`
   - `windows-x64`: shared bridge with static ONNX Runtime embedded; no
     `onnxruntime.dll` is required.
 
-See [ADR 0007](../docs/adr/0007-native-desktop-linkage.md) for the linkage
-decision and [native desktop transport](../docs/native-desktop-transport.md) for
+See [ADR 0008](../docs/adr/0008-linux-shared-bridge-linkage.md) for the Linux
+linkage decision, [ADR 0007](../docs/adr/0007-native-desktop-linkage.md) for
+Windows, and [native desktop transport](../docs/native-desktop-transport.md) for
 consumer packaging notes.
 
 ## Verification
 
 - `linuxX64`, `linuxArm64`, and `mingwX64` compile and link in CI.
-- The aggregate archive exposes exactly one `SherpaOnnxBridgeAbiVersion` and one
-  `OrtGetApiBase`, and leaves no undefined ONNX Runtime symbol.
-- The Windows bridge DLL exposes the same two symbols and needs no external ONNX
+- The Linux shared library exports the full `SherpaOnnxBridge*` C ABI, defines
+  `OrtGetApiBase` internally, and reports no `libonnxruntime` dynamic
+  dependency.
+- The Windows bridge DLL exposes the same ABI and needs no external ONNX
   Runtime.
 - The shared contract suite passes on all three desktop targets.
 - Real-model inference runs when `SHERPA_ONNX_KMP_TEST_MODEL_DIR` is set.
@@ -50,7 +53,10 @@ consumer packaging notes.
 
 ## Known limitations
 
-- `linuxArm64` requires an aarch64 build host; the Kotlin/Native and CMake
-  builds both run natively.
+- The Linux glibc floor is whatever the build host compiled against. The ONNX
+  Runtime side is pinned to `glibc2_17`, but the C++ graph is compiled by the
+  build host, so a distribution newer than the consumer's glibc is possible.
+- `linuxArm64` cross-compiles on an x86_64 host and is tested under qemu. A
+  native aarch64 host also works.
 - Desktop real-model inference is exercised in CI on native runners. The
   development host is Apple Silicon and cannot link Linux or Windows binaries.

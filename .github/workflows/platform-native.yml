@@ -58,7 +58,6 @@ jobs:
         with:
           path: |
             ~/.cache/sherpa-onnx-kmp
-            build/native-desktop
             build/upstream
             ~/.konan
           key: desktop-linux-x64-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch', 'native/**', 'sherpa-onnx-kmp/build.gradle.kts') }}
@@ -66,27 +65,49 @@ jobs:
         run: ./scripts/build-native-desktop.sh linux-x64
       - name: Inspect runtime dependencies
         run: |
-          lib=build/native-desktop/linux-x64/lib/libsherpa-onnx-kmp-native-desktop.a
+          lib=build/native-desktop/linux-x64/lib/libsherpa-onnx-kmp-native-desktop.so
           test -f "$lib"
-          # Materialize the symbol names once. Piping a large archive's nm output
-          # straight into `grep -q` raises SIGPIPE and, under pipefail, fails the
-          # step even when the symbol is present.
-          nm -g --defined-only "$lib" 2>/dev/null | awk '{print $NF}' > /tmp/defined.txt || true
-          nm -g --undefined-only "$lib" 2>/dev/null | awk '{print $NF}' > /tmp/undefined.txt || true
-          wc -l /tmp/defined.txt /tmp/undefined.txt
-          grep -Fxq 'SherpaOnnxBridgeAbiVersion' /tmp/defined.txt || {
-            echo "Missing SherpaOnnxBridgeAbiVersion" >&2; exit 1; }
-          grep -Fxq 'OrtGetApiBase' /tmp/defined.txt || {
-            echo "Missing OrtGetApiBase" >&2; exit 1; }
-          for entry in OrtCreateSession OrtRun OrtCreateEnv OrtReleaseEnv; do
-            if grep -Fxq "$entry" /tmp/undefined.txt; then
-              echo "Undefined ONNX Runtime C entry point: $entry" >&2
-              exit 1
-            fi
+          # The bridge is a shared library: only its exported C ABI is a
+          # link-time dependency for Kotlin/Native. Materialize the symbol names
+          # once; piping `nm` into `grep -q` raises SIGPIPE under pipefail.
+          nm -D --defined-only "$lib" 2>/dev/null | awk '{print $NF}' > /tmp/exported.txt || true
+          wc -l /tmp/exported.txt
+          for symbol in \
+            SherpaOnnxBridgeAbiVersion \
+            SherpaOnnxBridgeInfoJson \
+            SherpaOnnxBridgeCreate \
+            SherpaOnnxBridgeCall \
+            SherpaOnnxBridgePushAudio \
+            SherpaOnnxBridgeDestroy \
+            SherpaOnnxBridgeFree; do
+            grep -Fxq "$symbol" /tmp/exported.txt || {
+              echo "Missing exported symbol: $symbol" >&2; exit 1; }
           done
+          # ONNX Runtime must be inside the library. A dynamic dependency on a
+          # separate libonnxruntime.so would require host applications to ship
+          # one more file.
+          if ! nm "$lib" 2>/dev/null | grep -qw OrtGetApiBase; then
+            echo "ONNX Runtime is not linked into the bridge" >&2; exit 1
+          fi
+          if readelf -d "$lib" | grep -qi 'libonnxruntime'; then
+            echo "Bridge dynamically depends on libonnxruntime" >&2; exit 1
+          fi
           echo "Runtime dependency inspection: OK"
       - name: Build and test Linux x64 KMP target
-        run: ./gradlew :sherpa-onnx-kmp:linuxX64Test --stacktrace
+        run: |
+          # The test executable resolves the bridge through its rpath entries,
+          # which point next to the binary and into a sibling `lib/`. Stage the
+          # shared library in both places so either resolution wins.
+          ./gradlew :sherpa-onnx-kmp:linkDebugTestLinuxX64 --stacktrace
+          bin_dir=$(find sherpa-onnx-kmp/build/bin/linuxX64 -type d -name debugTest | head -n 1)
+          if [[ -z "$bin_dir" ]]; then
+            echo "Linux test binary directory was not produced" >&2
+            exit 1
+          fi
+          mkdir -p "$bin_dir/lib"
+          cp -f build/native-desktop/linux-x64/lib/libsherpa-onnx-kmp-native-desktop.so "$bin_dir/"
+          cp -f build/native-desktop/linux-x64/lib/libsherpa-onnx-kmp-native-desktop.so "$bin_dir/lib/"
+          ./gradlew :sherpa-onnx-kmp:linuxX64Test --stacktrace
 
   linux-arm64:
     runs-on: ubuntu-24.04
@@ -111,7 +132,6 @@ jobs:
         with:
           path: |
             ~/.cache/sherpa-onnx-kmp
-            build/native-desktop
             build/upstream
             ~/.konan
           key: desktop-linux-arm64-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch', 'native/**', 'sherpa-onnx-kmp/build.gradle.kts') }}
@@ -119,36 +139,32 @@ jobs:
         run: ./scripts/build-native-desktop.sh linux-arm64
       - name: Inspect runtime dependencies
         run: |
-          lib=build/native-desktop/linux-arm64/lib/libsherpa-onnx-kmp-native-desktop.a
+          lib=build/native-desktop/linux-arm64/lib/libsherpa-onnx-kmp-native-desktop.so
           test -f "$lib"
-          # An `ar` archive reports as "current ar archive", not as an arch, so
-          # the architecture check inspects a member object instead.
-          member=$(ar t "$lib" | head -n 1)
-          tmpdir=$(mktemp -d)
-          (cd "$tmpdir" && ar x "$lib" "$member")
-          file "$tmpdir/$member" | grep -q 'aarch64' || {
-            echo "Aggregate archive members are not aarch64" >&2
-            file "$tmpdir/$member" >&2
-            exit 1
-          }
-          rm -rf "$tmpdir"
+          file "$lib" | grep -q 'aarch64' || {
+            echo "Bridge library is not aarch64" >&2; file "$lib" >&2; exit 1; }
           # Extract just the symbol names. `nm` prefixes a type letter and, for
           # defined symbols, an address, so the last field is the name.
-          aarch64-linux-gnu-nm -g --defined-only "$lib" 2>/dev/null \
-            | awk '{print $NF}' > /tmp/defined-arm64.txt || true
-          aarch64-linux-gnu-nm -g --undefined-only "$lib" 2>/dev/null \
-            | awk '{print $NF}' > /tmp/undefined-arm64.txt || true
-          wc -l /tmp/defined-arm64.txt /tmp/undefined-arm64.txt
-          grep -Fxq 'SherpaOnnxBridgeAbiVersion' /tmp/defined-arm64.txt || {
-            echo "Missing SherpaOnnxBridgeAbiVersion" >&2; exit 1; }
-          grep -Fxq 'OrtGetApiBase' /tmp/defined-arm64.txt || {
-            echo "Missing OrtGetApiBase" >&2; exit 1; }
-          for entry in OrtCreateSession OrtRun OrtCreateEnv OrtReleaseEnv; do
-            if grep -Fxq "$entry" /tmp/undefined-arm64.txt; then
-              echo "Undefined ONNX Runtime C entry point: $entry" >&2
-              exit 1
-            fi
+          aarch64-linux-gnu-nm -D --defined-only "$lib" 2>/dev/null \
+            | awk '{print $NF}' > /tmp/exported-arm64.txt || true
+          wc -l /tmp/exported-arm64.txt
+          for symbol in \
+            SherpaOnnxBridgeAbiVersion \
+            SherpaOnnxBridgeInfoJson \
+            SherpaOnnxBridgeCreate \
+            SherpaOnnxBridgeCall \
+            SherpaOnnxBridgePushAudio \
+            SherpaOnnxBridgeDestroy \
+            SherpaOnnxBridgeFree; do
+            grep -Fxq "$symbol" /tmp/exported-arm64.txt || {
+              echo "Missing exported symbol: $symbol" >&2; exit 1; }
           done
+          if ! aarch64-linux-gnu-nm "$lib" 2>/dev/null | grep -qw OrtGetApiBase; then
+            echo "ONNX Runtime is not linked into the bridge" >&2; exit 1
+          fi
+          if aarch64-linux-gnu-readelf -d "$lib" | grep -qi 'libonnxruntime'; then
+            echo "Bridge dynamically depends on libonnxruntime" >&2; exit 1
+          fi
           echo "Runtime dependency inspection: OK"
       - name: Link Linux arm64 test binary
         run: >-
@@ -163,6 +179,10 @@ jobs:
             exit 1
           fi
           file "$binary" | grep -q 'aarch64'
+          # The test executable resolves the bridge through its rpath, which
+          # points next to the binary, so stage the library there.
+          cp -f build/native-desktop/linux-arm64/lib/libsherpa-onnx-kmp-native-desktop.so \
+            "$(dirname "$binary")/"
           qemu-aarch64-static -L /usr/aarch64-linux-gnu "$binary"
 
   windows-x64:
@@ -192,7 +212,6 @@ jobs:
         with:
           path: |
             ~/.cache/sherpa-onnx-kmp
-            build/native-desktop
             build/upstream
           key: desktop-windows-x64-msvc-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch', 'native/**', 'sherpa-onnx-kmp/build.gradle.kts') }}
       - name: Build native desktop libraries
@@ -227,4 +246,16 @@ jobs:
           echo "Runtime dependency inspection: OK"
       - name: Build and test Windows x64 KMP target
         shell: bash
-        run: ./gradlew :sherpa-onnx-kmp:mingwX64Test --stacktrace
+        run: |
+          # A Kotlin/Native test executable resolves the bridge DLL at load time.
+          # Windows searches the executable's directory first, so the DLL is
+          # staged there before the test task runs.
+          ./gradlew :sherpa-onnx-kmp:linkDebugTestMingwX64 --stacktrace
+          bin_dir=$(find sherpa-onnx-kmp/build/bin/mingwX64 -type d -name debugTest | head -n 1)
+          if [[ -z "$bin_dir" ]]; then
+            echo "Windows test binary directory was not produced" >&2
+            exit 1
+          fi
+          cp -f build/native-desktop/windows-x64/lib/sherpa-onnx-portable-bridge.dll "$bin_dir/"
+          ls -la "$bin_dir"
+          ./gradlew :sherpa-onnx-kmp:mingwX64Test --stacktrace

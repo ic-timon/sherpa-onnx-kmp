@@ -147,12 +147,21 @@ if [[ "${SHERPA_ONNX_KMP_FETCH_DESKTOP:-0}" == "1" ]]; then
       echo "actual:   $actual" >&2
       exit 1
     fi
+    # Upstream `cmake/onnxruntime-wasm-simd.cmake` probes `/tmp` for the Wasm
+    # runtime before downloading it, so publish the file there as well. This
+    # keeps the Emscripten build offline-deterministic and pinned.
+    cp -f "$cache/$name" "/tmp/$name"
   }
 
-  fetch_desktop onnxruntime-linux-x64-static_lib-1.28.2-glibc2_17.zip \
-    2dada92465b40a16fb5011956d93eaf90e3091cf621a953e5371a5e6a687794e
-  fetch_desktop onnxruntime-linux-aarch64-static_lib-1.28.2-glibc2_17.zip \
-    fba13fa68dbc9305512869bfa74f53a15e7af983c44ba8a9cbecbce5c21b33b3
+  fetch_desktop onnxruntime-linux-x64-glibc2_17-Release-1.28.2.zip \
+    c4f8994d56191d9d2c92a961b39fe790459f2c5d155f912b239506ea31359534
+  fetch_desktop onnxruntime-linux-aarch64-glibc2_17-Release-1.28.2.zip \
+    28083273643f40fa6477ef9d53986fe216304710c4b1c743b217a4effd016339
   fetch_desktop onnxruntime-win-x64-static_lib-MT-Release-1.28.2.tar.bz2 \
     77c6cc2a419828f450a570851d7d6d2385523c411dbe858f841a4c7338a78881
+  # WebAssembly runtime for the browser bridge. This hash matches the one
+  # pinned by upstream `cmake/onnxruntime-wasm-simd.cmake`, so a version bump
+  # cannot silently desynchronize the two.
+  fetch_desktop onnxruntime-wasm-static_lib-simd-1.28.2.zip \
+    88688849b67fed9ca0e9fb2bf92ce19a5def9e8c2c8c2df34eb235d25893232a
 fi

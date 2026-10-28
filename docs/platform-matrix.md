@@ -34,9 +34,10 @@
 
 - KMP targets: `linuxX64`, `linuxArm64`
 - Transport: Native cinterop
-- Distribution: single aggregate static archive per architecture
+- Distribution: one shared bridge library per architecture
+  (`libsherpa-onnx-kmp-native-desktop.so`, static ONNX Runtime inside)
 - Providers: CPU
-- `linuxArm64` requires an aarch64 build host
+- `linuxArm64` cross-compiles on x86_64 and is tested under qemu
 
 ### Windows
 

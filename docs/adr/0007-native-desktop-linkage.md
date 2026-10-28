@@ -1,6 +1,6 @@
 # 0007: Native Desktop Linking and Packaging
 
-Status: Accepted
+Status: Superseded by ADR 0008 for the Linux decision; the Windows decision stands
 
 Date: 2026-10-28
 
@@ -20,10 +20,18 @@ Two questions had to be answered before 0.5.0 could ship:
 
 ## Decision
 
-### Linux uses one aggregate static archive
+### Linux uses a shared bridge library
+
+Superseded by ADR 0008. The aggregate static archive described below was
+abandoned after CI showed the C++ graph is compiled against the build host's
+glibc/libstdc++, which Kotlin/Native's glibc 2.19 konan sysroot cannot link.
+Linux now ships `libsherpa-onnx-kmp-native-desktop.so` for the same reasons
+Windows ships a DLL.
+
+The original decision is retained below for context.
 
 `sherpa-onnx-portable-bridge-static`, `sherpa-onnx-core`, its support libraries,
-and the static ONNX Runtime are merged into one archive per architecture:
+and the static ONNX Runtime were merged into one archive per architecture:
 
 ```text
 build/native-desktop/linux-x64/lib/libsherpa-onnx-kmp-native-desktop.a
@@ -62,11 +70,12 @@ executable layout and the `lib/` subdirectory.
 
 - The Kotlin/Native cinterop transport is identical on Apple, Linux, and
   Windows. Only linking and packaging differ, as ADR 0002 requires.
-- Linux artifacts are single-file static archives.
+- Linux artifacts are one shared library with no external ONNX Runtime
+  dependency (superseded from "single-file static archives" by ADR 0008).
 - Windows artifacts are one DLL with no external ONNX Runtime dependency.
-- Runtime dependency inspection is part of CI: Linux must show no undefined
-  ONNX Runtime symbol in the aggregate archive, and both platforms must expose
-  `SherpaOnnxBridgeAbiVersion` and `OrtGetApiBase`.
+- Runtime dependency inspection is part of CI: both platforms must expose
+  `SherpaOnnxBridgeAbiVersion` and `OrtGetApiBase`, and neither may depend on a
+  separate ONNX Runtime binary.
 - `linuxArm64` requires an aarch64 host because the Kotlin/Native and CMake
   builds both run natively; cross-compiling the full dependency graph was not
   worth the maintenance cost.

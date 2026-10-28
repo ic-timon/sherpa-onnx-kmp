@@ -39,71 +39,76 @@ extract_tar_once() {
   fi
 }
 
-# Collect every static archive produced by the sherpa-onnx build so the bridge
-# and its dependencies can be merged into one archive per target.
-sherpa_static_archives() {
+# Verify a produced shared library before it is published to Kotlin/Native.
+#
+# A shared library is the only workable Linux linkage here: Kotlin/Native links
+# with the konan sysroot (glibc 2.19), while the C++ graph is compiled against
+# the build host's newer glibc/libstdc++. Static linkage therefore always ends
+# in undefined `__isoc23_*`, `__libc_single_threaded`, and libstdc++ symbols.
+# Inside a `.so` those references resolve at runtime from the host's system
+# libraries, and only the bridge's C ABI is a link-time dependency.
+inspect_linux_shared_library() {
   local build_dir=$1
-  find "$build_dir/lib" -maxdepth 1 -name "*.a" \
-    ! -name "libsherpa-onnx-kmp-*" | sort
+  local library="$build_dir/lib/libsherpa-onnx-kmp-native-desktop.so"
+  local symbols="$build_dir/native-symbols.txt"
+
+  # Cross builds need the target archiver/nm; the host tools cannot read
+  # aarch64 objects. Pick the prefixed tools when they exist.
+  local nm_bin=nm
+  if [[ "$(uname -m)" != "aarch64" && "$(uname -m)" != "arm64" ]] && \
+     [[ "$build_dir" == *"linux-arm64"* ]] && \
+     command -v aarch64-linux-gnu-nm >/dev/null 2>&1; then
+    nm_bin=aarch64-linux-gnu-nm
+  fi
+
+  if [[ ! -s "$library" ]]; then
+    echo "Shared library was not produced: $library" >&2
+    return 1
+  fi
+
+  # Exported symbols only: the visibility preset hides everything that is not
+  # part of the bridge C ABI.
+  "$nm_bin" -D --defined-only "$library" > "$symbols" 2>/dev/null || true
+  local required
+  for required in \
+    SherpaOnnxBridgeAbiVersion \
+    SherpaOnnxBridgeInfoJson \
+    SherpaOnnxBridgeCreate \
+    SherpaOnnxBridgeCall \
+    SherpaOnnxBridgePushAudio \
+    SherpaOnnxBridgeDestroy \
+    SherpaOnnxBridgeFree; do
+    if ! grep -qw "$required" "$symbols"; then
+      echo "Shared library does not export $required" >&2
+      return 1
+    fi
+  done
+
+  # ONNX Runtime must be inside the library, not a separate runtime dependency
+  # that a host application would have to ship on its own.
+  if ! "$nm_bin" "$library" 2>/dev/null | grep -qw 'OrtGetApiBase'; then
+    echo "Shared library does not contain a statically linked ONNX Runtime" >&2
+    return 1
+  fi
+
+  printf 'Linux shared library: %s (%s bytes)\n' \
+    "$library" "$(stat -c%s "$library")"
+  printf 'Exported symbols: %s\n' "$(grep -c . < "$symbols")"
 }
 
-merge_linux_archive() {
+# Move the bridge shared library to a stable name that the Kotlin build can
+# depend on, independent of CMake's per-target output layout.
+package_linux_shared_library() {
   local build_dir=$1
-  local onnxruntime_archive=$2
-  local output="$build_dir/lib/libsherpa-onnx-kmp-native-desktop.a"
-
-  # Build the aggregate with an `ar` MRI script.
-  #
-  # `ar x` plus `ar rcs` is unsafe here: ONNX Runtime and sherpa-onnx both ship
-  # generic member names, so extracting into one directory overwrites objects and
-  # their symbols vanish. MRI `addlib` merges at the archive level, keeps every
-  # member, and rebuilds the symbol index, which is what the linker needs for a
-  # static C++ graph.
-  local mri
-  mri=$(mktemp)
-  {
-    printf 'create %s\n' "$output"
-    for archive in $(sherpa_static_archives "$build_dir") "$onnxruntime_archive"; do
-      printf 'addlib %s\n' "$archive"
-    done
-    printf 'save\nend\n'
-  } > "$mri"
-
-  rm -f "$output"
-  if ! ar -M < "$mri" 2>"$build_dir/ar-merge.log"; then
-    echo "ar MRI merge failed:" >&2
-    cat "$build_dir/ar-merge.log" >&2
-    rm -f "$mri"
+  local library
+  library=$(find "$build_dir" -name "libsherpa-onnx-portable-bridge.so" | head -n 1)
+  if [[ -z "$library" ]]; then
+    echo "Bridge shared library was not produced in $build_dir" >&2
     return 1
   fi
-  rm -f "$mri"
-
-  if [[ ! -s "$output" ]]; then
-    echo "Failed to create the aggregate archive: $output" >&2
-    return 1
-  fi
-  ranlib "$output" || true
-
-  nm -g --defined-only "$output" > "$build_dir/native-symbols.txt" 2>/dev/null || true
-  local member_count
-  member_count=$(ar t "$output" | wc -l)
-  printf 'Linux aggregate: %s (%s bytes, %s members)\n' \
-    "$output" "$(stat -c%s "$output")" "$member_count"
-
-  # A merged archive must contain far more members than the bridge alone; a
-  # small count means the ORT archive was not folded in.
-  if [[ "$member_count" -lt 100 ]]; then
-    echo "Aggregate archive looks truncated: only $member_count members" >&2
-    return 1
-  fi
-  if ! grep -q 'SherpaOnnxBridgeAbiVersion' "$build_dir/native-symbols.txt"; then
-    echo "Aggregate is missing SherpaOnnxBridgeAbiVersion" >&2
-    return 1
-  fi
-  if ! grep -q 'OrtGetApiBase' "$build_dir/native-symbols.txt"; then
-    echo "Aggregate is missing OrtGetApiBase" >&2
-    return 1
-  fi
+  mkdir -p "$build_dir/lib"
+  cp -f "$library" "$build_dir/lib/libsherpa-onnx-kmp-native-desktop.so"
+  printf 'Linux bridge: %s\n' "$build_dir/lib/libsherpa-onnx-kmp-native-desktop.so"
 }
 
 build_linux_x64() {
@@ -120,16 +125,25 @@ build_linux_x64() {
   local build_dir="$desktop_root/linux-x64"
   export SHERPA_ONNXRUNTIME_LIB_DIR="$ort_dir/lib"
   export SHERPA_ONNXRUNTIME_INCLUDE_DIR="$ort_dir/include"
+  # A shared bridge is required, not a preference. Kotlin/Native links with the
+  # konan sysroot (glibc 2.19), so a static C++ graph compiled against the
+  # runner's glibc/libstdc++ can never resolve. A `.so` closes those references
+  # inside itself at runtime; only the C ABI crosses into Kotlin.
+  #
+  # `SHERPA_ONNX_LINK_LIBSTDCPP_STATICALLY=OFF` stops upstream from appending
+  # `-static-libstdc++ -static-libgcc`, which would reintroduce the mixing.
   cmake -S native -B "$build_dir" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_SHARED_LIBS=OFF \
+    -DBUILD_SHARED_LIBS=ON \
+    -DSHERPA_ONNX_LINK_LIBSTDCPP_STATICALLY=OFF \
     -DSHERPA_ONNX_SOURCE_DIR="$source_dir" \
     -DSHERPA_ONNX_KMP_BUILD_JNI=OFF \
     -DSHERPA_ONNX_KMP_BUILD_TESTS=OFF \
     -DSHERPA_ONNX_USE_PRE_INSTALLED_ONNXRUNTIME_IF_AVAILABLE=ON
   cmake --build "$build_dir" -j "$jobs" \
-    --target sherpa-onnx-portable-bridge-static
-  merge_linux_archive "$build_dir" "$ort_dir/lib/libonnxruntime.a"
+    --target sherpa-onnx-portable-bridge
+  package_linux_shared_library "$build_dir"
+  inspect_linux_shared_library "$build_dir"
 }
 
 build_linux_arm64() {
@@ -163,15 +177,20 @@ build_linux_arm64() {
 
   cmake -S native -B "$build_dir" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_SHARED_LIBS=OFF \
+    -DBUILD_SHARED_LIBS=ON \
+    -DSHERPA_ONNX_LINK_LIBSTDCPP_STATICALLY=OFF \
     -DSHERPA_ONNX_SOURCE_DIR="$source_dir" \
     -DSHERPA_ONNX_KMP_BUILD_JNI=OFF \
     -DSHERPA_ONNX_KMP_BUILD_TESTS=OFF \
     -DSHERPA_ONNX_USE_PRE_INSTALLED_ONNXRUNTIME_IF_AVAILABLE=ON \
     "${toolchain_args[@]}"
   cmake --build "$build_dir" -j "$jobs" \
-    --target sherpa-onnx-portable-bridge-static
-  merge_linux_archive "$build_dir" "$ort_dir/lib/libonnxruntime.a"
+    --target sherpa-onnx-portable-bridge
+  package_linux_shared_library "$build_dir"
+
+  # arm64 uses the aarch64 archiver/nm, which the host toolchain does not put on
+  # PATH under the canonical name when cross-compiling.
+  inspect_linux_shared_library "$build_dir"
 }
 
 build_windows_x64() {

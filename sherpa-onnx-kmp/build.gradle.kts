@@ -161,34 +161,26 @@ kotlin {
         }
     }
 
-    // Linux links a single aggregate archive that already contains ONNX Runtime.
-    // The archive is a static C++ graph with mutual references, so the bridge
-    // and the C++ runtime must be resolved in one group; otherwise the linker
-    // drops ORT members before their C++ dependencies are known.
+    // Linux links a shared bridge, mirroring Windows. Kotlin/Native links with
+    // the konan sysroot (glibc 2.19) while the C++ graph is built against the
+    // host's glibc/libstdc++, so a static C++ archive can never resolve. The
+    // `.so` closes those references itself; only the bridge C ABI crosses.
     configureNativeDesktopInterop(
         target = linuxX64Target,
         nativeDirectory = "linux-x64",
         linkerOptions = listOf(
-            "-Wl,--start-group",
+            "-Wl,-rpath,\$ORIGIN",
+            "-Wl,-rpath,\$ORIGIN/lib",
             "-lsherpa-onnx-kmp-native-desktop",
-            "-Wl,--end-group",
-            "-lstdc++",
-            "-lm",
-            "-ldl",
-            "-lpthread",
         ),
     )
     configureNativeDesktopInterop(
         target = linuxArm64Target,
         nativeDirectory = "linux-arm64",
         linkerOptions = listOf(
-            "-Wl,--start-group",
+            "-Wl,-rpath,\$ORIGIN",
+            "-Wl,-rpath,\$ORIGIN/lib",
             "-lsherpa-onnx-kmp-native-desktop",
-            "-Wl,--end-group",
-            "-lstdc++",
-            "-lm",
-            "-ldl",
-            "-lpthread",
         ),
     )
     // Windows links a DLL plus its import library and has no group semantics.

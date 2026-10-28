@@ -43,7 +43,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build build-essential
+            cmake ninja-build build-essential wabt
       - uses: mymindstorm/setup-emsdk@v14
         with:
           version: 4.0.11

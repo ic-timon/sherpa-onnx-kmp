@@ -17,3 +17,4 @@ Records:
 - [0005](0005-model-store.md): ModelStore resource abstraction
 - [0006](0006-apple-distribution.md): Self-contained Apple XCFramework
 - [0007](0007-native-desktop-linkage.md): Native desktop linking and packaging
+- [0008](0008-linux-shared-bridge-linkage.md): Linux ships a shared bridge library

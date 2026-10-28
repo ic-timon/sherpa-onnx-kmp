@@ -16,61 +16,78 @@ if ! command -v emcmake >/dev/null 2>&1; then
 fi
 
 source_dir=$(./scripts/bootstrap-sherpa-source.sh | tail -n 1)
-deps_root="$(cache_root)/deps"
 
-# The Emscripten build needs a Wasm ONNX Runtime. sherpa-onnx can also build
-# without it for C API parity, but inference requires the Wasm runtime.
-wasm_ort="$deps_root/onnxruntime-wasm"
-mkdir -p "$wasm_ort"
+# Publish the pinned Wasm ONNX Runtime into the cache. Upstream's
+# `cmake/onnxruntime-wasm-simd.cmake` probes `/tmp` first, so doing this before
+# configure keeps the build offline-deterministic and hash-verified.
+SHERPA_ONNX_KMP_FETCH_DESKTOP=1 ./scripts/fetch-native-deps.sh
 
 build_dir="$repo_root/build/web-emscripten"
 mkdir -p "$build_dir"
 
+# `SHERPA_ONNX_ENABLE_WASM` is upstream's supported WebAssembly path. Without
+# it `cmake/onnxruntime.cmake` rejects Emscripten outright ("Only support Linux,
+# macOS, Windows, and Android"), because its downloader has no Wasm branch.
+# With it, the pinned `onnxruntime-wasm-static_lib-simd` package is used.
+#
+# The feature gates below extend the bridge to the same offline ASR surface the
+# adapter exposes on native platforms. They must stay in sync with
+# `portable-bridge`'s backend, which only uses offline ASR at this milestone.
 emcmake cmake -S native -B "$build_dir" \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_SHARED_LIBS=OFF \
+  -DSHERPA_ONNX_ENABLE_WASM=ON \
+  -DSHERPA_ONNX_ENABLE_WASM_WEB=ON \
+  -DSHERPA_ONNX_ENABLE_WASM_ASR=ON \
   -DSHERPA_ONNX_SOURCE_DIR="$source_dir" \
   -DSHERPA_ONNX_KMP_BUILD_JNI=OFF \
   -DSHERPA_ONNX_KMP_BUILD_TESTS=OFF \
   -DSHERPA_ONNX_ENABLE_WEBSOCKET=OFF \
   -DSHERPA_ONNX_ENABLE_PORTAUDIO=OFF \
-  -DSHERPA_ONNX_ENABLE_BINARY=OFF
+  -DSHERPA_ONNX_ENABLE_BINARY=OFF \
+  -DSHERPA_ONNX_ENABLE_TTS=OFF \
+  -DSHERPA_ONNX_ENABLE_SPEAKER_DIARIZATION=OFF
 
-cmake --build "$build_dir" -j "$jobs" --target sherpa-onnx-portable-bridge-static
+cmake --build "$build_dir" -j "$jobs" --target sherpa-onnx-bridge-web
 
 mkdir -p "$out_dir"
 
-# The exported symbol set is the bridge ABI plus the Emscripten runtime
-# helpers the worker needs. Capability discovery must reflect exactly these.
-EXPORTED_FUNCTIONS='["_SherpaOnnxBridgeAbiVersion","_SherpaOnnxBridgeInfoJson","_SherpaOnnxBridgeCreate","_SherpaOnnxBridgeCall","_SherpaOnnxBridgePushAudio","_SherpaOnnxBridgeDestroy","_SherpaOnnxBridgeFree","_malloc","_free"]'
-
-emcc -O3 \
-  -s WASM=1 \
-  -s MODULARIZE=1 \
-  -s EXPORT_NAME=createSherpaOnnxBridgeModule \
-  -s EXPORT_ES6=0 \
-  -s ENVIRONMENT=worker \
-  -s ALLOW_MEMORY_GROWTH=1 \
-  -s INITIAL_MEMORY=268435456 \
-  -s MAXIMUM_MEMORY=2147483648 \
-  -s "EXPORTED_FUNCTIONS=$EXPORTED_FUNCTIONS" \
-  -s "EXPORTED_RUNTIME_METHODS=['UTF8ToString','getValue','setValue','FS']" \
-  -s FILESYSTEM=1 \
-  -s ASSERTIONS=0 \
-  -o "$out_dir/sherpa-onnx-bridge.js" \
-  "$build_dir/lib/libsherpa-onnx-portable-bridge.a" \
-  $(find "$build_dir/lib" -maxdepth 1 -name "*.a" \
-      ! -name "libsherpa-onnx-portable-bridge.a" | sort)
+# CMake emits the pair next to each other; copy them to the conventional output
+# directory the Kotlin/JS worker loads.
+for artifact in sherpa-onnx-bridge.js sherpa-onnx-bridge.wasm; do
+  source_file="$build_dir/web/$artifact"
+  if [[ ! -f "$source_file" ]]; then
+    echo "Emscripten output is missing: $source_file" >&2
+    exit 1
+  fi
+  cp -f "$source_file" "$out_dir/$artifact"
+done
 
 printf 'Web bridge: %s\n' "$out_dir/sherpa-onnx-bridge.js"
 printf 'Wasm module: %s\n' "$out_dir/sherpa-onnx-bridge.wasm"
 
-# Fail loudly if the export set lost a bridge entry point.
-for symbol in SherpaOnnxBridgeInfoJson SherpaOnnxBridgeCreate SherpaOnnxBridgeCall \
-              SherpaOnnxBridgePushAudio SherpaOnnxBridgeDestroy; do
-  if ! nm -g "$build_dir/lib/libsherpa-onnx-portable-bridge.a" | grep -q "$symbol"; then
-    echo "Bridge archive is missing $symbol" >&2
-    exit 1
-  fi
-done
-echo "Bridge export inspection: OK"
+# Fail loudly if the export set lost a bridge entry point. `wasm-objdump` reads
+# the Wasm export section directly, which is what the worker resolves against.
+wasm_symbols="$build_dir/wasm-exports.txt"
+if command -v wasm-objdump >/dev/null 2>&1; then
+  wasm-objdump -x "$out_dir/sherpa-onnx-bridge.wasm" > "$wasm_symbols" 2>/dev/null || true
+else
+  echo "wasm-objdump is not available; skipping export inspection" >&2
+  wasm_symbols=""
+fi
+if [[ -n "$wasm_symbols" ]]; then
+  for symbol in \
+    SherpaOnnxBridgeAbiVersion \
+    SherpaOnnxBridgeInfoJson \
+    SherpaOnnxBridgeCreate \
+    SherpaOnnxBridgeCall \
+    SherpaOnnxBridgePushAudio \
+    SherpaOnnxBridgeDestroy \
+    SherpaOnnxBridgeFree; do
+    if ! grep -q "$symbol" "$wasm_symbols"; then
+      echo "Wasm module does not export $symbol" >&2
+      exit 1
+    fi
+  done
+  echo "Wasm export inspection: OK"
+fi
