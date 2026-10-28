@@ -8,6 +8,11 @@ cache="$(cache_root)/upstream"
 archive="$cache/sherpa-onnx-v2.0.1.tar.gz"
 source_dir="$repo_root/build/upstream/sherpa-onnx"
 patch_file="$repo_root/patches/0001-parse-options-try-set-option.patch"
+# `thread_local` in normal-data-generator.cc requires __tls_get_addr, which
+# Bionic does not export below API 29. Removing the TLS reference is cheaper
+# than carrying an emulated-TLS flag through every Android build; the patch is
+# also a genuine upstream portability fix.
+tls_patch="$repo_root/patches/0002-normal-data-generator-avoid-thread-local.patch"
 
 download \
   https://codeload.github.com/k2-fsa/sherpa-onnx/tar.gz/refs/tags/v2.0.1 \
@@ -31,6 +36,11 @@ fi
 
 if ! grep -q "TrySetOption" "$source_dir/sherpa-onnx/csrc/parse-options.h"; then
   patch -d "$source_dir" -p1 < "$patch_file"
+fi
+
+if grep -q "static thread_local RNGHolder" \
+    "$source_dir/sherpa-onnx/csrc/normal-data-generator.cc"; then
+  patch -d "$source_dir" -p1 < "$tls_patch"
 fi
 
 printf '%s\n' "$source_dir"

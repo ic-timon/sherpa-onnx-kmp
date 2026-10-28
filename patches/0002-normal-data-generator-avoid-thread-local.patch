@@ -1,0 +1,97 @@
+diff --git a/sherpa-onnx/csrc/normal-data-generator.cc b/sherpa-onnx/csrc/normal-data-generator.cc
+index b6a1951..9e06662 100644
+--- a/sherpa-onnx/csrc/normal-data-generator.cc
++++ b/sherpa-onnx/csrc/normal-data-generator.cc
+@@ -4,14 +4,14 @@
+ 
+ #include "sherpa-onnx/csrc/normal-data-generator.h"
+ 
++#include <memory>
+ #include <random>
+ #include <thread>
+ 
+ namespace sherpa_onnx {
+ 
+ // Helper type hidden in translation unit
+-namespace {
+-struct RNGHolder {
++struct NormalDataGenerator::RNGHolder {
+   std::mt19937 rng;
+   std::normal_distribution<float> dist;
+ 
+@@ -25,7 +25,6 @@ struct RNGHolder {
+         }()),
+         dist() {}
+ };
+-}  // namespace
+ 
+ NormalDataGenerator::NormalDataGenerator(float mean /* = 0.0f*/,
+                                          float stddev /* = 1.0f*/,
+@@ -36,6 +35,12 @@ NormalDataGenerator::NormalDataGenerator(float mean /* = 0.0f*/,
+   }
+ }
+ 
++NormalDataGenerator::~NormalDataGenerator() = default;
++NormalDataGenerator::NormalDataGenerator(NormalDataGenerator &&) noexcept =
++    default;
++NormalDataGenerator &NormalDataGenerator::operator=(
++    NormalDataGenerator &&) noexcept = default;
++
+ void NormalDataGenerator::Fill(float *data, std::size_t size) const {
+   if (seed_ >= 0) {
+     // Deterministic mode: use instance-level RNG
+@@ -44,14 +49,17 @@ void NormalDataGenerator::Fill(float *data, std::size_t size) const {
+       data[i] = dist(rng_);
+     }
+   } else {
+-    // Original behavior: thread-local random device
+-    static thread_local RNGHolder holder;
++    // Per-instance holder. A function-local `thread_local` here needs
++    // __tls_get_addr, which Bionic does not export below API 29.
++    if (!holder_) {
++      holder_ = std::make_unique<RNGHolder>();
++    }
+ 
+-    holder.dist.param(
++    holder_->dist.param(
+         std::normal_distribution<float>::param_type(mean_, stddev_));
+ 
+     for (std::size_t i = 0; i < size; ++i) {
+-      data[i] = holder.dist(holder.rng);
++      data[i] = holder_->dist(holder_->rng);
+     }
+   }
+ }
+diff --git a/sherpa-onnx/csrc/normal-data-generator.h b/sherpa-onnx/csrc/normal-data-generator.h
+index fa34b76..2c84d44 100644
+--- a/sherpa-onnx/csrc/normal-data-generator.h
++++ b/sherpa-onnx/csrc/normal-data-generator.h
+@@ -7,6 +7,7 @@
+ 
+ #include <cstddef>
+ #include <cstdint>
++#include <memory>
+ #include <random>
+ 
+ namespace sherpa_onnx {
+@@ -15,6 +16,9 @@ class NormalDataGenerator {
+  public:
+   explicit NormalDataGenerator(float mean = 0.0f, float stddev = 1.0f,
+                                int32_t seed = -1);
++  ~NormalDataGenerator();
++  NormalDataGenerator(NormalDataGenerator &&) noexcept;
++  NormalDataGenerator &operator=(NormalDataGenerator &&) noexcept;
+ 
+   // Fill pre-allocated memory
+   void Fill(float *data, std::size_t size) const;
+@@ -24,6 +28,10 @@ class NormalDataGenerator {
+   float stddev_;
+   int32_t seed_ = -1;         // -1 = use thread-local random device (default)
+   mutable std::mt19937 rng_;  // used if seed_ >= 0
++  // Lazily created. Declared as an incomplete type here so the header does not
++  // need the RNG holder's definition.
++  struct RNGHolder;
++  mutable std::unique_ptr<RNGHolder> holder_;
+ };
+ 
+ }  // namespace sherpa_onnx

@@ -30,12 +30,14 @@ supersedes the current contract.
 
 ### Fixed
 
-- `armeabi-v7a`, `x86`, and `x86_64` Android bridges now link. NDK `libc` at
-  API 21 predates `__tls_get_addr` for these ABIs, and upstream sherpa-onnx
-  enables IPO/LTO for shared Release builds, which re-materialized a
-  `thread_local` in `normal-data-generator.cc` without emulated TLS. The bridge
-  now forwards `-femulated-tls` to the LTO plugin, and
-  `scripts/check-android-aar.sh` asserts the resulting symbol shape per ABI.
+- `armeabi-v7a`, `x86`, and `x86_64` Android bridges now link. Android below API
+  29 exports no TLS helper from `libc`, and enabling TTS was what first
+  referenced the upstream `thread_local` in `normal-data-generator.cc`.
+  `patches/0002` removes the TLS reference entirely by moving the RNG holder to
+  an instance member, instead of carrying an emulated-TLS flag through every
+  Android build. `scripts/check-android-aar.sh` now asserts that no bridge
+  imports a TLS helper on any ABI, so a future upstream bump that reintroduces
+  one fails the release rather than the device.
 - `scripts/package-jvm-native.sh` emits the versioned
   `sherpa-onnx-kmp-jvm-native-<platform>-<version>.jar` name and ships only the
   runtime libraries, not the static archives that tripled the download.

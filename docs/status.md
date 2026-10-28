@@ -45,8 +45,11 @@ build that omits a feature says so instead of failing at call time.
 - 10 resources, 35 operations.
 - `SherpaOnnxBridgePushAudio` and `SherpaOnnxBridgePullAudio` carry streaming
   input and generated audio out of band; JSON never carries samples.
-- The only upstream prerequisite remains
-  `patches/0001-parse-options-try-set-option.patch`.
+- Two upstream prerequisites:
+  `patches/0001-parse-options-try-set-option.patch` and
+  `patches/0002-normal-data-generator-avoid-thread-local.patch`. The second
+  removes the only `thread_local` that a minSdk 21 Android build cannot link;
+  see `platform-matrix.md`.
 
 ### Verification recorded for this release
 

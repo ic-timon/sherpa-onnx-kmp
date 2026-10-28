@@ -25,25 +25,29 @@ set(SHERPA_ONNX_ENABLE_TTS ON CACHE BOOL "" FORCE)
 set(SHERPA_ONNX_ENABLE_SPEAKER_DIARIZATION ON CACHE BOOL "" FORCE)
 set(SHERPA_ONNX_ENABLE_BINARY OFF CACHE BOOL "" FORCE)
 
-# 32-bit Android libc never exported __tls_get_addr, and neither does the
-# 64-bit x86 stub at API 21. The NDK toolchain already lowers `thread_local`
-# to __emutls_get_address for those ABIs by itself, so no compile-stage flag
-# is needed. The problem is the link stage: upstream sherpa-onnx turns on
-# IPO/LTO for shared Release builds, and the LTO backend re-materializes the
-# `thread_local` access there without knowing the target's TLS model, so the
-# final link reintroduces an undefined __tls_get_addr (first seen from
-# normal-data-generator.cc once TTS was enabled). Forward the TLS model to the
-# LTO plugin for the affected ABIs only. aarch64 links through TLSDESC and
-# needs neither.
-if(ANDROID AND ANDROID_ABI MATCHES "^(armeabi-v7a|x86|x86_64)$")
-  add_link_options("SHELL:-Wl,-plugin-opt=-emulated-tls")
-endif()
+# Android below API 29 has no TLS helper in libc, so any `thread_local` in the
+# upstream core fails the link once TTS references it. Rather than carry an
+# emulated-TLS flag through every Android build,
+# patches/0002-normal-data-generator-avoid-thread-local.patch removes the only
+# such reference outright. If a future upstream bump adds another one, the link
+# fails loudly and this comment is where the workaround goes; see
+# docs/platform-matrix.md.
 
 # v0.4 Apple builds support CPU only. The static macOS ONNX Runtime package
 # also does not include the CoreML provider factory, so keep the bridge
 # self-contained instead of leaving an unresolved CoreML symbol.
 if(APPLE AND NOT BUILD_SHARED_LIBS)
   add_compile_definitions(SHERPA_ONNX_DISABLE_COREML)
+endif()
+
+# openfst's randgen.h uses std::min/std::max through `using namespace std`, and
+# windows.h defines both as macros. Any translation unit that instantiates
+# openfst templates while windows.h is visible fails with C2589. TTS enables
+# the zipvoice/pocket/supertonic targets, which are the first ones to pull
+# randgen.h in on Windows, so this surfaced only once the full feature surface
+# was turned on. NOMINMAX is the supported way to keep the std names.
+if(WIN32)
+  add_compile_definitions(NOMINMAX)
 endif()
 
 set(SHERPA_ONNX_SOURCE_DIR "" CACHE PATH

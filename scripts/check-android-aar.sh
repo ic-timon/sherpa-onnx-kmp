@@ -27,7 +27,6 @@ cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
 unzip -q "$aar" 'jni/*/libsherpa-onnx-portable-bridge.so' -d "$work"
-unzip -q "$aar" 'jni/*/libc++_shared.so' -d "$work"
 for abi in arm64-v8a armeabi-v7a x86 x86_64; do
   so="$work/jni/$abi/libsherpa-onnx-portable-bridge.so"
   if [[ ! -f "$so" ]]; then
@@ -48,23 +47,16 @@ for abi in arm64-v8a armeabi-v7a x86 x86_64; do
       exit 1
     }
 
-  # armeabi-v7a/x86/x86_64 at API 21 have no __tls_get_addr, so those ABIs
-  # must be linked with emulated TLS and resolve __emutls_get_address from
-  # libc++_shared. Catch a regression where the LTO plugin drops the flag.
-  if python3 "$repo_root/scripts/check-elf-exports.py" --undefined "$so" __tls_get_addr >/dev/null 2>&1; then
-    echo "Packaged bridge for $abi still references __tls_get_addr" >&2
-    exit 1
-  fi
-  if [[ "$abi" != "arm64-v8a" ]]; then
-    if ! python3 "$repo_root/scripts/check-elf-exports.py" --undefined "$so" __emutls_get_address >/dev/null; then
-      echo "Packaged bridge for $abi does not use emulated TLS" >&2
+  # Android below API 29 exports no TLS helper from libc. The bridge must
+  # therefore import neither __tls_get_addr nor its emulated twin: any
+  # `thread_local` reaching the link is what breaks a minSdk 21 build. This is
+  # the assertion that patches/0002 holds, and it fails loudly if a future
+  # upstream bump reintroduces one.
+  for tls_symbol in __tls_get_addr __emutls_get_address; do
+    if python3 "$repo_root/scripts/check-elf-exports.py" --undefined "$so" "$tls_symbol" >/dev/null 2>&1; then
+      echo "Packaged bridge for $abi imports $tls_symbol; Android minSdk 21 cannot resolve it" >&2
       exit 1
     fi
-    if ! python3 "$repo_root/scripts/check-elf-exports.py" \
-      "$work/jni/$abi/libc++_shared.so" __emutls_get_address >/dev/null; then
-      echo "Packaged libc++_shared for $abi does not provide __emutls_get_address" >&2
-      exit 1
-    fi
-  fi
+  done
 done
 echo "AAR ABI inventory is valid: $aar"

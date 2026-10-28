@@ -292,11 +292,18 @@ pulling a TTS chunk before synthesizing.
 - `SherpaOnnxBridgeDestroy` is a no-op for an unknown handle, so a double destroy
   is safe. It still should not race a call on the same handle.
 
-## Upstream prerequisite
+## Upstream prerequisites
 
-The bridge uses a non-fatal `ParseOptions::TrySetOption` addition. The patch is:
+Two patches are applied by `scripts/bootstrap-sherpa-source.sh`:
 
-`patches/0001-parse-options-try-set-option.patch`
+- `patches/0001-parse-options-try-set-option.patch` — a non-fatal
+  `ParseOptions::TrySetOption` addition. The bridge needs it to reject an
+  unknown option with a typed error instead of aborting.
+- `patches/0002-normal-data-generator-avoid-thread-local.patch` — moves the
+  RNG holder in `normal-data-generator.cc` from a function-local `thread_local`
+  to an instance member. Android below API 29 exports no TLS helper from
+  `libc`, so the original code cannot link once TTS references it. The change is
+  also a portability fix in its own right and is intended for upstream.
 
 The upstream source is pinned to sherpa-onnx `v2.0.1`. The supported range and the
 upgrade rules are in [`versioning.md`](versioning.md).
