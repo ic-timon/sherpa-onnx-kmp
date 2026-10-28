@@ -128,6 +128,20 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             cmake ninja-build build-essential \
             g++-aarch64-linux-gnu qemu-user-static
+          # The Kotlin/Native binary is linked against the konan aarch64 sysroot
+          # (glibc 2.25), so it records `libcrypt.so.1` — a library Ubuntu split
+          # out of glibc into `libcrypt1` and stopped shipping in the base image.
+          # qemu runs with `-L /usr/aarch64-linux-gnu`, so the arm64 build of that
+          # package has to be unpacked into the cross sysroot.
+          sudo dpkg --add-architecture arm64
+          cd /tmp
+          curl -fsSLO http://ports.ubuntu.com/ubuntu-ports/pool/main/libx/libxcrypt/libcrypt1_4.4.36-4build1_arm64.deb
+          echo "5cd73ba112507dabd8e43b528ca9f530719a370e014b8e3e797770e6e940cccf  libcrypt1_4.4.36-4build1_arm64.deb" \
+            | sha256sum -c -
+          sudo dpkg -x libcrypt1_4.4.36-4build1_arm64.deb /tmp/libcrypt-arm64
+          sudo cp -a /tmp/libcrypt-arm64/usr/lib/aarch64-linux-gnu/libcrypt.so.1* \
+            /usr/aarch64-linux-gnu/lib/
+          ls -l /usr/aarch64-linux-gnu/lib/libcrypt.so.1*
       - name: Cache native desktop dependencies
         uses: actions/cache@v4
         with:

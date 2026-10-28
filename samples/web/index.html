@@ -30,12 +30,13 @@
     <pre id="output"></pre>
 
     <script type="module">
-      // Served next to this page:
-      //   sherpa-onnx-kmp.js       (Kotlin/JS production bundle)
-      //   sherpa-onnx-worker.js    (worker entry)
-      //   sherpa-onnx-bridge.js    (Emscripten glue)
-      //   sherpa-onnx-bridge.wasm  (Emscripten module)
-      import { runSample } from "./sherpa-onnx-kmp.mjs";
+      // Served next to this page (see samples/web/README.md):
+      //   sherpa-onnx-kmp-samples-web.mjs  (Kotlin/JS production bundle, ES module)
+      //   *.mjs                            (its Kotlin/JS module dependencies)
+      //   sherpa-onnx-worker.js            (worker entry)
+      //   sherpa-onnx-bridge.js            (Emscripten glue)
+      //   sherpa-onnx-bridge.wasm          (Emscripten module)
+      import { runSample } from "./sherpa-onnx-kmp-samples-web.mjs";
 
       const status = document.getElementById("status");
       const output = document.getElementById("output");

@@ -115,6 +115,28 @@ configureSherpaWebWorker("/assets/sherpa-onnx-worker.js")
 The worker script itself lives at `samples/web/sherpa-onnx-worker.js` and must
 be deployed next to `sherpa-onnx-bridge.js` and `sherpa-onnx-bridge.wasm`.
 
+### Sample bundle
+
+`samples:web` is compiled as an ES module (`JsModuleKind.MODULE_ES`), so its
+production bundle can be imported directly by the page's
+`<script type="module">`:
+
+```bash
+./gradlew :samples:web:jsProductionLibraryDistribution
+```
+
+The distribution in `samples/web/build/dist/js/productionLibrary` writes both a
+`.js` and a `.mjs` for every module; the `.mjs` variants are the ES modules. The
+entry point is `sherpa-onnx-kmp-samples-web.mjs`, which exports `runSample`:
+
+```javascript
+import { runSample } from "./sherpa-onnx-kmp-samples-web.mjs";
+```
+
+Every `.mjs` file it imports must be served beside it. Copying only the entry
+bundle yields a page that fails on its first `import`, which is why the CI
+assembly step copies the whole `*.mjs` set instead of a single file.
+
 ## Capabilities
 
 `SherpaOnnxBridgeInfoJson` is produced by the same bridge code as the native

@@ -101,15 +101,22 @@ jobs:
       - name: Assemble the deployable sample
         run: |
           dist=samples/web/dist
+          lib=samples/web/build/dist/js/productionLibrary
           mkdir -p "$dist"
           cp -f build/web/sherpa-onnx-bridge.js build/web/sherpa-onnx-bridge.wasm "$dist/"
           cp -f samples/web/sherpa-onnx-worker.js samples/web/index.html "$dist/"
-          bundle=$(find samples/web/build/dist/js/productionLibrary -name "*.mjs" | head -n 1)
-          if [[ -z "$bundle" ]]; then
-            echo "Kotlin/JS production bundle was not produced" >&2
+          # The bundle is an ES module, so every module it imports must be
+          # served beside it under the same name. Copying only the entry file
+          # produces a page that fails on its first `import`.
+          entry="$lib/sherpa-onnx-kmp-samples-web.mjs"
+          if [[ ! -f "$entry" ]]; then
+            echo "Kotlin/JS ES module bundle was not produced" >&2
+            ls -la "$lib" >&2
             exit 1
           fi
-          cp -f "$bundle" "$dist/sherpa-onnx-kmp.mjs"
+          cp -f "$lib"/*.mjs "$dist/"
+          # Fail here rather than in the browser if a dependency is missing.
+          grep -q 'export' "$dist/sherpa-onnx-kmp-samples-web.mjs"
           ls -la "$dist"
       - name: Upload the deployable sample
         uses: actions/upload-artifact@v4
