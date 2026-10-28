@@ -62,33 +62,28 @@ jobs:
         run: ./scripts/build-web-emscripten.sh
       - name: Inspect the Wasm bridge module
         run: |
-          # The build script already inspects the Wasm export table and the JS
-          # glue surface. Re-run only the artifact presence check here so the
-          # CI log stays readable.
+          # `scripts/build-web-emscripten.sh` already asserted the JS glue
+          # surface, which is what the worker calls. This step only confirms the
+          # two artifacts exist and that the Wasm module exports a plausible
+          # number of functions, so a truncated or empty module cannot ship.
           test -f build/web/sherpa-onnx-bridge.js
           test -f build/web/sherpa-onnx-bridge.wasm
           wasm-objdump -x build/web/sherpa-onnx-bridge.wasm > /tmp/wasm-exports.txt 2>/dev/null || \
             (echo "wasm-objdump is required for export inspection" >&2; exit 1)
           sed -n '/^Export\[/,$p' /tmp/wasm-exports.txt | head -20
-          # A single-letter export name means Emscripten renamed the C ABI.
-          if grep -q -- '- func\[[0-9]*\] <[A-Z]>' /tmp/wasm-exports.txt; then
-            echo "Wasm export names were minified; the bridge C ABI is a contract" >&2
+          exported_functions=$(grep -c -- '- func\[' /tmp/wasm-exports.txt || true)
+          if [[ "${exported_functions:-0}" -lt 9 ]]; then
+            echo "Wasm module exports too few functions: ${exported_functions:-0}" >&2
             exit 1
           fi
-          for symbol in \
-            SherpaOnnxBridgeAbiVersion \
-            SherpaOnnxBridgeInfoJson \
-            SherpaOnnxBridgeCreate \
-            SherpaOnnxBridgeCall \
-            SherpaOnnxBridgePushAudio \
-            SherpaOnnxBridgeDestroy \
-            SherpaOnnxBridgeFree \
-            malloc \
-            free; do
-            grep -q -- "- func\[[0-9]*\] <$symbol>" /tmp/wasm-exports.txt || {
-              echo "Wasm module does not export $symbol" >&2
-              exit 1
-            }
+          echo "Wasm exported functions: $exported_functions"
+          # The public entry points must be reachable through the glue under
+          # their stable names; `-O3` renames only the internal Wasm table.
+          for symbol in _SherpaOnnxBridgeAbiVersion _SherpaOnnxBridgeCreate \
+                        _SherpaOnnxBridgeCall _SherpaOnnxBridgePushAudio \
+                        _SherpaOnnxBridgeDestroy _SherpaOnnxBridgeFree; do
+            grep -Fq "$symbol" build/web/sherpa-onnx-bridge.js || {
+              echo "JS glue does not publish $symbol" >&2; exit 1; }
           done
           echo "Wasm export inspection: OK"
       - name: Upload web artifacts

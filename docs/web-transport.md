@@ -88,11 +88,19 @@ build/web/sherpa-onnx-bridge.js
 build/web/sherpa-onnx-bridge.wasm
 ```
 
-The script compiles `sherpa-onnx-portable-bridge-static` with `emcmake` and then
-links the archive into a `MODULARIZE` module named
-`createSherpaOnnxBridgeModule`. The export list is fixed, and the script fails
-if any bridge entry point is missing from the archive, so capability discovery
-cannot silently drift from the actual export set.
+The script builds the `sherpa-onnx-bridge-web` target with `emcmake` and links a
+`MODULARIZE` module named `createSherpaOnnxBridgeModule`. The export list is
+fixed, and the script fails if any bridge entry point is missing from the
+generated JS glue, so capability discovery cannot silently drift from the actual
+export set.
+
+At `-O3` Emscripten renames the internal Wasm export table to single letters.
+That is expected and harmless: the rename pass rewrites the generated glue in
+lockstep, and the glue keeps publishing the stable `Module['_SherpaOnnxBridge*']`
+names. Those names are the contract — they are what the worker calls. The
+settings that control the rename (`MINIFY_WASM_IMPORTS_AND_EXPORTS`,
+`MINIFY_WASM_EXPORT_NAMES`) are Emscripten-internal and rejected on the command
+line, so the build verifies the glue surface instead of the raw export table.
 
 ## Worker deployment
 

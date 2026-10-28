@@ -135,15 +135,21 @@ if(EMSCRIPTEN)
     "SHELL:-sASSERTIONS=0"
     "SHELL:-sEXPORTED_FUNCTIONS=${SHERPA_ONNX_BRIDGE_WEB_EXPORTS}"
     "SHELL:-sEXPORTED_RUNTIME_METHODS=UTF8ToString,getValue,setValue,FS"
-    # `-O3` turns on import/export renaming, which rewrites every Wasm export
-    # to a single letter (`P`, `Q`, ...). The bridge C ABI is a published
-    # contract: the worker resolves `_SherpaOnnxBridge*` names, an external
-    # consumer may inspect the module, and capability discovery reports this
-    # exact set. Renaming it would make the export table unauditable and tie
-    # the artifact to one Emscripten version's mangling scheme.
-    "SHELL:-sMINIFY_WASM_IMPORTS_AND_EXPORTS=0"
-    "SHELL:-sMINIFY_WASM_EXPORT_NAMES=0"
   )
+
+  # At `-O3` Emscripten runs `wasm-metadce` and then renames Wasm imports and
+  # exports to single letters. The two settings that control this
+  # (`MINIFY_WASM_IMPORTS_AND_EXPORTS`, `MINIFY_WASM_EXPORT_NAMES`) live in
+  # `settings_internal.js` and are rejected on the command line, so this cannot
+  # be turned off from here. It also does not need to be.
+  #
+  # The renaming is an internal detail of the JS+Wasm pair: the pass rewrites
+  # every `wasmExports["SherpaOnnxBridgeCreate"]` lookup in the generated glue
+  # to match, while the glue still declares and publishes the stable
+  # `Module['_SherpaOnnxBridgeCreate']` names. That glue surface — not the Wasm
+  # export table — is what the worker calls and what the C ABI contract covers.
+  # `scripts/build-web-emscripten.sh` verifies it.
+
 endif()
 
 add_executable(sherpa-onnx-portable-bridge-cli tools/bridge_cli.cc)

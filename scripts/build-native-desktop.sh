@@ -128,27 +128,29 @@ inspect_linux_shared_library() {
   printf 'Exported symbols: %s\n' "$(grep -c . < "$symbols")"
 }
 
-# Move the bridge shared library to a stable name that the Kotlin build can
-# depend on, independent of CMake's per-target output layout.
+# Prepare the Linux bridge for Kotlin/Native consumption.
 #
-# The copy keeps the CMake name as well, because that name is the library's
-# SONAME (no `SOVERSION` is set): a consumer linked against the Kotlin alias
-# records `libsherpa-onnx-portable-bridge.so` as its `DT_NEEDED` entry, so the
-# original name must exist on the loader path or the executable fails with
-# `cannot open shared object file`. Both names are therefore shipped.
+# CMake already writes the bridge into `<build>/lib` under its output name, and
+# that name is also the library's SONAME (no `SOVERSION` is set). A consumer
+# linked through the Kotlin alias therefore records
+# `libsherpa-onnx-portable-bridge.so` in `DT_NEEDED`, and the loader resolves
+# that name, not the `-l` name. The CMake file is kept as-is and the alias is an
+# additional copy, so the link name and the runtime name stay in agreement.
+#
+# The path is exact rather than discovered with `find`: on a rerun the previous
+# alias copy is itself a match, and `cp` would fail on "are the same file".
 package_linux_shared_library() {
   local build_dir=$1
-  local library
-  library=$(find "$build_dir" -name "libsherpa-onnx-portable-bridge.so" | head -n 1)
-  if [[ -z "$library" ]]; then
-    echo "Bridge shared library was not produced in $build_dir" >&2
+  local soname_file="$build_dir/lib/libsherpa-onnx-portable-bridge.so"
+  local alias_file="$build_dir/lib/libsherpa-onnx-kmp-native-desktop.so"
+  if [[ ! -s "$soname_file" ]]; then
+    echo "Bridge shared library was not produced at $soname_file" >&2
     return 1
   fi
   mkdir -p "$build_dir/lib"
-  cp -f "$library" "$build_dir/lib/libsherpa-onnx-kmp-native-desktop.so"
-  cp -f "$library" "$build_dir/lib/libsherpa-onnx-portable-bridge.so"
-  printf 'Linux bridge: %s\n' "$build_dir/lib/libsherpa-onnx-kmp-native-desktop.so"
-  printf 'Linux bridge SONAME: %s\n' "$build_dir/lib/libsherpa-onnx-portable-bridge.so"
+  cp -f "$soname_file" "$alias_file"
+  printf 'Linux bridge: %s\n' "$alias_file"
+  printf 'Linux bridge SONAME: %s\n' "$soname_file"
 }
 
 build_linux_x64() {

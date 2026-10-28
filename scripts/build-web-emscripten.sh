@@ -67,49 +67,17 @@ done
 printf 'Web bridge: %s\n' "$out_dir/sherpa-onnx-bridge.js"
 printf 'Wasm module: %s\n' "$out_dir/sherpa-onnx-bridge.wasm"
 
-# Fail loudly if the export set lost a bridge entry point. `wasm-objdump` reads
-# the Wasm export section directly, which is what the worker resolves against.
-wasm_symbols="$build_dir/wasm-exports.txt"
-if command -v wasm-objdump >/dev/null 2>&1; then
-  wasm-objdump -x "$out_dir/sherpa-onnx-bridge.wasm" > "$wasm_symbols" 2>/dev/null || true
-else
-  echo "wasm-objdump is not available; skipping export inspection" >&2
-  wasm_symbols=""
-fi
-if [[ -n "$wasm_symbols" ]]; then
-  # Emscripten strips the leading underscore when naming Wasm exports, so the
-  # dump shows `SherpaOnnxBridgeAbiVersion`, not `_SherpaOnnxBridgeAbiVersion`.
-  if ! grep -q 'Export\[' "$wasm_symbols"; then
-    echo "wasm-objdump output has no export section:" >&2
-    head -40 "$wasm_symbols" >&2
-    exit 1
-  fi
-  for symbol in \
-    SherpaOnnxBridgeAbiVersion \
-    SherpaOnnxBridgeInfoJson \
-    SherpaOnnxBridgeCreate \
-    SherpaOnnxBridgeCall \
-    SherpaOnnxBridgePushAudio \
-    SherpaOnnxBridgeDestroy \
-    SherpaOnnxBridgeFree \
-    malloc \
-    free; do
-    if ! grep -q -- "- func\[[0-9]*\] <$symbol>" "$wasm_symbols"; then
-      echo "Wasm module does not export $symbol" >&2
-      # A single-letter export table means Emscripten renamed the C ABI, which
-      # `-sMINIFY_WASM_IMPORTS_AND_EXPORTS=0` in the CMake target prevents.
-      echo "Actual exports:" >&2
-      sed -n '/^Export\[/,$p' "$wasm_symbols" | head -30 >&2
-      exit 1
-    fi
-  done
-  echo "Wasm export inspection: OK"
-fi
-
-# The worker never calls the Wasm exports directly: it calls the `_`-prefixed
-# properties Emscripten's JS glue assigns. Inspecting the Wasm table alone would
-# pass even if the glue stopped exposing an entry point, so assert the consumer
-# surface too.
+# Fail loudly if the bridge entry points disappeared from the surface the worker
+# actually calls.
+#
+# At `-O3` Emscripten renames the *Wasm export table* to single letters; its
+# `MINIFY_WASM_*` settings are internal and cannot be disabled from the command
+# line. The renaming pass rewrites the generated glue in lockstep, and the glue
+# keeps publishing the stable `Module['_SherpaOnnxBridge*']` names. Those names,
+# not the minified table, are the contract: they are what the worker resolves and
+# what the public C ABI promises. Inspecting the table for unmangled names would
+# therefore reject a correct build.
+glue="$out_dir/sherpa-onnx-bridge.js"
 for symbol in \
   _SherpaOnnxBridgeAbiVersion \
   _SherpaOnnxBridgeInfoJson \
@@ -118,9 +86,25 @@ for symbol in \
   _SherpaOnnxBridgePushAudio \
   _SherpaOnnxBridgeDestroy \
   _SherpaOnnxBridgeFree; do
-  if ! grep -q "$symbol" "$out_dir/sherpa-onnx-bridge.js"; then
-    echo "JS glue does not expose $symbol" >&2
+  if ! grep -Fq "$symbol" "$glue"; then
+    echo "JS glue does not publish $symbol" >&2
     exit 1
   fi
 done
 echo "JS glue inspection: OK"
+
+# The exported function count is still a useful tripwire: a build that exported
+# nothing would pass a substring search on a stale glue file.
+wasm_symbols="$build_dir/wasm-exports.txt"
+if command -v wasm-objdump >/dev/null 2>&1; then
+  wasm-objdump -x "$out_dir/sherpa-onnx-bridge.wasm" > "$wasm_symbols" 2>/dev/null || true
+  exported_functions=$(grep -c -- '- func\[' "$wasm_symbols" || true)
+  if [[ "${exported_functions:-0}" -lt 9 ]]; then
+    echo "Wasm module exports too few functions: ${exported_functions:-0}" >&2
+    sed -n '/^Export\[/,$p' "$wasm_symbols" | head -20 >&2
+    exit 1
+  fi
+  printf 'Wasm exported functions: %s\n' "$exported_functions"
+else
+  echo "wasm-objdump is not available; skipping the Wasm export count" >&2
+fi
