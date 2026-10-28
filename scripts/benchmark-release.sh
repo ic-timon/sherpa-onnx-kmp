@@ -26,7 +26,18 @@ source "$(dirname "$0")/lib.sh"
 repo_root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$repo_root"
 
-build_dir="${SHERPA_ONNX_KMP_BENCH_BUILD_DIR:-$repo_root/build/native-test}"
+build_dir="${SHERPA_ONNX_KMP_BENCH_BUILD_DIR:-}"
+if [[ -z "$build_dir" ]]; then
+  # CI configures the bridge at build/native; a developer tree may use
+  # build/native-test. Prefer whichever actually has the CLI.
+  for candidate in "$repo_root/build/native" "$repo_root/build/native-test"; do
+    if [[ -x "$candidate/portable-bridge/sherpa-onnx-portable-bridge-cli" ]]; then
+      build_dir="$candidate"
+      break
+    fi
+  done
+fi
+build_dir="${build_dir:-$repo_root/build/native}"
 cli="$build_dir/portable-bridge/sherpa-onnx-portable-bridge-cli"
 output="${1:-$repo_root/build/release/benchmarks.json}"
 

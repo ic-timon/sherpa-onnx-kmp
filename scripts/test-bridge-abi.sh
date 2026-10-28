@@ -15,7 +15,16 @@ source "$(dirname "$0")/lib.sh"
 repo_root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$repo_root"
 
-build_dir="${1:-$repo_root/build/native-test}"
+build_dir="${1:-}"
+if [[ -z "$build_dir" ]]; then
+  for candidate in "$repo_root/build/native" "$repo_root/build/native-test"; do
+    if [[ -x "$candidate/portable-bridge/sherpa-onnx-portable-bridge-cli" ]]; then
+      build_dir="$candidate"
+      break
+    fi
+  done
+fi
+build_dir="${build_dir:-$repo_root/build/native}"
 cli="$build_dir/portable-bridge/sherpa-onnx-portable-bridge-cli"
 
 if [[ ! -x "$cli" ]]; then

@@ -19,11 +19,23 @@ library reports from `SherpaOnnxBridgeInfoJson()` at runtime.
   for the 64-bit native libraries.
 - Device suite: API 36.1 arm64 emulator.
 - `armeabi-v7a`, `x86`, and `x86_64` link with emulated TLS. NDK `libc` at API
-  21 does not export `__tls_get_addr` for those ABIs, so `thread_local` in the
-  upstream core is lowered to `__emutls_get_address`; the bridge passes the
-  flag through to the LTO plugin as well, because the link-time optimizer
-  otherwise re-materializes the native model. `check-android-aar.sh` asserts the
-  symbol shape per ABI so a regression fails the release instead of the device.
+  21 does not export `__tls_get_addr` for those ABIs, and TTS is what first
+  referenced it: with `SHERPA_ONNX_ENABLE_TTS` off, the archive member holding
+  the upstream `thread_local` in `normal-data-generator.cc` was dropped by
+  `--gc-sections`, so the symbol never reached the link. The NDK driver already
+  lowers `thread_local` to `__emutls_get_address` on its own; the flag that is
+  actually required is the one handed to the LTO plugin, because upstream
+  enables IPO/LTO for shared Release builds and the backend otherwise
+  re-materializes the native TLS model at link time.
+- The AAR must therefore ship `libc++_shared.so` in every ABI. Bionic does not
+  export `__emutls_get_address` either; the libc++ runtime defines it weakly,
+  and all four bridges record `DT_NEEDED libc++_shared.so`, so it resolves at
+  load time. Static `c++_static` would reintroduce the original failure.
+- `scripts/check-android-aar.sh` asserts that shape per ABI — no bridge imports
+  `__tls_get_addr`, every non-`arm64-v8a` bridge imports
+  `__emutls_get_address`, and the packaged `libc++_shared.so` defines it — so a
+  regression fails the release instead of the device. `arm64-v8a` is
+  deliberately excluded: it uses TLSDESC and imports no TLS helper at all.
 
 ### iOS
 

@@ -75,30 +75,34 @@ jobs:
           ./gradlew :sherpa-onnx-kmp:jvmTest --rerun-tasks --stacktrace
       - name: Fetch pinned feature models
         run: ./scripts/prepare-feature-models.sh
+      # `$HOME` is expanded by the shell inside `run`, not by the workflow
+      # expression evaluator: `env.HOME` is not a valid context there and
+      # silently produced `/.cache/...`.
       - name: Run bridge ABI and feature probe
-        env:
-          SHERPA_ONNX_KMP_FEATURE_MODEL_DIR: ${{ env.HOME }}/.cache/sherpa-onnx-kmp/feature-models
-        run: ./scripts/test-bridge-abi.sh build/native
+        run: |
+          export SHERPA_ONNX_KMP_FEATURE_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/feature-models"
+          ./scripts/test-bridge-abi.sh build/native
       - name: Run feature integration tests against real models
         env:
-          SHERPA_ONNX_KMP_FEATURE_MODEL_DIR: ${{ env.HOME }}/.cache/sherpa-onnx-kmp/feature-models
           SHERPA_ONNX_KMP_NATIVE_PATH: ${{ github.workspace }}/build/native/lib
         run: |
+          export SHERPA_ONNX_KMP_FEATURE_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/feature-models"
           export SHERPA_ONNX_KMP_TEST_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/models/sherpa-onnx-nemo-ctc-fa-shenava-rizeh-pizeh-v1.0-non-streaming-int8-2026-06-26"
           ./gradlew :sherpa-onnx-kmp:jvmTest --tests '*JvmFeatureIntegrationTest*' --rerun-tasks --stacktrace
       - name: Release hardening checks
         env:
-          SHERPA_ONNX_KMP_FEATURE_MODEL_DIR: ${{ env.HOME }}/.cache/sherpa-onnx-kmp/feature-models
           # The memory-growth run takes minutes; the ABI and dependency audit is
           # the part that must gate a merge, and the long run happens on the
           # release branch.
           SHERPA_ONNX_KMP_LEAK_FAST: '1'
-        run: ./scripts/check-release-hardening.sh build/native
+        run: |
+          export SHERPA_ONNX_KMP_FEATURE_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/feature-models"
+          ./scripts/check-release-hardening.sh build/native
       - name: Record the performance baseline
-        env:
-          SHERPA_ONNX_KMP_FEATURE_MODEL_DIR: ${{ env.HOME }}/.cache/sherpa-onnx-kmp/feature-models
-          SHERPA_ONNX_KMP_TEST_MODEL_DIR: ${{ env.HOME }}/.cache/sherpa-onnx-kmp/models/sherpa-onnx-nemo-ctc-fa-shenava-rizeh-pizeh-v1.0-non-streaming-int8-2026-06-26
-        run: ./scripts/benchmark-release.sh build/release/benchmarks.json
+        run: |
+          export SHERPA_ONNX_KMP_FEATURE_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/feature-models"
+          export SHERPA_ONNX_KMP_TEST_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/models/sherpa-onnx-nemo-ctc-fa-shenava-rizeh-pizeh-v1.0-non-streaming-int8-2026-06-26"
+          ./scripts/benchmark-release.sh build/release/benchmarks.json
       - uses: actions/upload-artifact@v4
         with:
           name: benchmarks
