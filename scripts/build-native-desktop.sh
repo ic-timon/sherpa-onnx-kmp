@@ -52,24 +52,37 @@ merge_linux_archive() {
   local onnxruntime_archive=$2
   local output="$build_dir/lib/libsherpa-onnx-kmp-native-desktop.a"
 
+  # Merge with one extraction directory per source archive.
+  #
+  # A single shared extraction directory loses objects: ONNX Runtime and
+  # sherpa-onnx both contain generic member names, so `ar x` overwrites them and
+  # the overwritten symbols vanish from the aggregate. Extracting per archive
+  # and appending with `ar q` keeps every member; duplicate member names are
+  # legal in a Unix archive and the linker's symbol index still resolves them.
+  local work
+  work=$(mktemp -d)
   rm -f "$output"
-  # ar-based merging is the portable equivalent of libtool -static on Linux.
-  local objects
-  objects=$(mktemp -d)
-  (
-    cd "$objects"
-    for archive in $(sherpa_static_archives "$build_dir") "$onnxruntime_archive"; do
-      ar x "$archive"
-    done
-  )
-  rm -f "$output"
-  (
-    cd "$objects"
-    ar rcs "$output" ./*.o
-  )
-  rm -rf "$objects"
+  local index=0
+  for archive in $(sherpa_static_archives "$build_dir") "$onnxruntime_archive"; do
+    index=$((index + 1))
+    local dir="$work/$index"
+    mkdir -p "$dir"
+    (
+      cd "$dir" || exit 1
+      ar x "$archive" || exit 1
+      # `ar q` appends without replacing same-named members.
+      ar q "$output" ./*.o || exit 1
+    )
+  done
+  ranlib "$output"
+  rm -rf "$work"
 
-  nm -g --defined-only "$output" > "$build_dir/native-symbols.txt"
+  if [[ ! -s "$output" ]]; then
+    echo "Failed to create the aggregate archive: $output" >&2
+    return 1
+  fi
+
+  nm -g --defined-only "$output" > "$build_dir/native-symbols.txt" 2>/dev/null || true
   grep -q 'SherpaOnnxBridgeAbiVersion' "$build_dir/native-symbols.txt"
   grep -q 'OrtGetApiBase' "$build_dir/native-symbols.txt"
   printf 'Linux aggregate: %s (%s bytes)\n' "$output" "$(stat -c%s "$output")"
