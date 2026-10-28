@@ -1,6 +1,7 @@
 # Release 0.6.0: Web
 
-Status: released
+Status: complete. Shipped in v1.0.0. No 0.6.0 tag or release was cut; this
+document records the scope as it was designed and delivered on `main`.
 
 ## Scope
 

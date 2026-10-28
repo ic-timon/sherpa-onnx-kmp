@@ -111,7 +111,6 @@ jobs:
             cp -f "build/native-desktop/linux-x64/lib/$so" "$bin_dir/lib/"
           done
           ./gradlew :sherpa-onnx-kmp:linuxX64Test --stacktrace
-
   linux-arm64:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
@@ -207,7 +206,6 @@ jobs:
             cp -f "build/native-desktop/linux-arm64/lib/$so" "$bin_dir/lib/"
           done
           qemu-aarch64-static -L /usr/aarch64-linux-gnu "$binary"
-
   windows-x64:
     runs-on: windows-2022
     timeout-minutes: 120
@@ -229,7 +227,7 @@ jobs:
           cmake -G "Visual Studio 17 2022" -A x64 -S native -B build/toolchain-probe \
             -DSHERPA_ONNX_KMP_BUILD_JNI=OFF \
             -DSHERPA_ONNX_KMP_BUILD_TESTS=OFF 2>&1 | tail -5 || true
-          ls build/toolchain-probe | head
+          find build/toolchain-probe -maxdepth 1 -mindepth 1 | head
       - name: Cache native desktop dependencies
         uses: actions/cache@v4
         with:

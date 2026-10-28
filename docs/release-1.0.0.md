@@ -26,20 +26,26 @@ sherpa-onnx      2.0.1   pinned upstream core
   build host.
 - `SherpaOnnxKmp.xcframework.zip` — iOS device, iOS Simulator, and macOS arm64,
   with the bridge, sherpa-onnx, and ONNX Runtime embedded.
-- `linux-x64` and `linux-arm64` native libraries, including the
-  `libsherpa-onnx-portable-bridge.so` `SONAME` copy and `libonnxruntime.so`.
-- `windows-x64/sherpa-onnx-portable-bridge.dll` with static ONNX Runtime.
-- `web`: `sherpa-onnx-bridge.js`, `sherpa-onnx-bridge.wasm`, and the worker.
+- `sherpa-onnx-kmp-linux-x64-1.0.0.zip` and
+  `sherpa-onnx-kmp-linux-arm64-1.0.0.zip` — `libsherpa-onnx-portable-bridge.so`
+  with its SONAME, the `libsherpa-onnx-kmp-native-desktop.so` alias,
+  `libonnxruntime.so`, and the public C header.
+- `sherpa-onnx-kmp-windows-x64-1.0.0.zip` — `sherpa-onnx-portable-bridge.dll`
+  with static ONNX Runtime, its import library, and the header.
+- `sherpa-onnx-kmp-web-1.0.0.zip` — `sherpa-onnx-bridge.js`,
+  `sherpa-onnx-bridge.wasm`, `sherpa-onnx-worker.js`, and the Kotlin/JS bundle.
 
-Each artifact is published with a SHA-256 checksum.
+Each archive carries a `BUILD-INFO.txt` recording the platform, build host,
+commit, and bridge ABI version, and every artifact is covered by one
+`SHA256SUMS`.
 
-`scripts/package-release.sh 1.0.0` assembles the host's slices into
-`build/release/1.0.0` and writes one `SHA256SUMS` covering the whole set. It
-expects the portable bridge under `build/native`, which is where
-`.github/workflows/portable-bridge.yml` configures it; `package-jvm-native.sh`
-also accepts `build/native-test` so a local tree works unchanged. Linux and
-Windows natives are produced on their own hosts by
-`scripts/build-native-desktop.sh` and attach to the same release.
+[`release.yml`](../.github/workflows/release.yml) builds each slice on its own
+runner — the AAR needs the NDK and all four ABIs, the XCFramework needs Xcode,
+the Linux libraries need the glibc they were built against, and the Windows DLL
+needs MSVC — then a `publish` job merges them, refuses to write a manifest when a
+platform is missing, and creates the release. A single host can still package its
+own slice with `scripts/package-release.sh`, which passes `--allow-partial`
+because the other platforms cannot exist there.
 
 ## Capability surface
 

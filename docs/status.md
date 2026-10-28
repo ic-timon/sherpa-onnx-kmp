@@ -101,7 +101,10 @@ These are deferred deliberately, not unfinished:
 
 ## Immediate workstreams
 
-1. Publish 1.0.0 artifacts with checksums and attach them to the release.
+1. Publish every platform artifact for 1.0.0. The `release.yml` workflow builds
+   each slice on its own runner and refuses to write a manifest when one is
+   missing; run it once the GitHub Actions runners used by the matrix are
+   available.
 2. Record physical-device runs for iOS and Android when hardware is available.
 3. Publish to the chosen Maven and Apple coordinates.
 4. Track upstream sherpa-onnx releases and extend the pinned core range after the

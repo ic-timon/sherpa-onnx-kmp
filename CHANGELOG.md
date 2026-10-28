@@ -47,6 +47,16 @@ supersedes the current contract.
   pointing at a version that does not exist. Package downloads retry with
   backoff instead of failing a workflow on a transient `api.github.com`
   timeout.
+
+### Release engineering
+
+- Every target family now publishes an artifact to the same release, not just
+  the slices the packaging host happened to produce. `release.yml` builds the
+  Android AAR and JVM JARs, the XCFramework, the Linux x64 and arm64 libraries,
+  the Windows x64 DLL, and the web bundle on their own runners, then a `publish`
+  job refuses to write a manifest when any platform is missing. Previously the
+  release notes listed Linux, Windows, and web artifacts that no workflow had
+  ever uploaded.
 - `scripts/package-jvm-native.sh` emits the versioned
   `sherpa-onnx-kmp-jvm-native-<platform>-<version>.jar` name and ships only the
   runtime libraries, not the static archives that tripled the download.

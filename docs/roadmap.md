@@ -152,9 +152,17 @@ published or attached to the repository.
 - Windows x64 native artifact.
 - Native desktop samples.
 
+## Milestone tags
+
+`v0.1.0` through `v0.5.0` were tagged and published as they landed. The 0.6.0
+through 0.9.0 milestones were completed on `main` but never received their own
+tags or GitHub releases; their scope shipped in `v1.0.0`. The sections below
+record that history rather than implying a tag that does not exist.
+
 ## 0.6.0 Web
 
-Status: released. See [release notes](release-0.6.0.md).
+Status: complete. Shipped in [v1.0.0](release-1.0.0.md); see the
+[0.6.0 notes](release-0.6.0.md) for the scope as it was designed.
 
 ### Scope
 
@@ -182,7 +190,9 @@ Status: released. See [release notes](release-0.6.0.md).
 
 ## 0.7.0 Streaming ASR and VAD
 
-Status: released.
+Status: complete. Shipped in [v1.0.0](release-1.0.0.md); see the
+[0.7.0 notes](release-0.7.0.md). No milestone tag was cut for this version on
+its own.
 
 ### Scope
 
@@ -206,7 +216,9 @@ Status: released.
 
 ## 0.8.0 TTS, KWS, and Full Feature Surface
 
-Status: released.
+Status: complete. Shipped in [v1.0.0](release-1.0.0.md); see the
+[0.8.0 notes](release-0.8.0.md). No milestone tag was cut for this version on
+its own.
 
 ### Scope
 
@@ -233,7 +245,9 @@ Status: released.
 
 ## 0.9.0 Release Hardening
 
-Status: released. The hardening checks are `scripts/check-release-hardening.sh`
+Status: complete. Shipped in [v1.0.0](release-1.0.0.md); see the
+[0.9.0 notes](release-0.9.0.md). No milestone tag was cut for this version on
+its own. The hardening checks are `scripts/check-release-hardening.sh`
 (header/library ABI agreement, dependency audit, bounded memory growth over
 repeated create/destroy), `scripts/test-bridge-abi.sh` (ABI integer, resources,
 operations, typed failures, real TTS), and `scripts/benchmark-release.sh`

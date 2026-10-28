@@ -8,6 +8,8 @@ arch=$(uname -m)
 case "$os" in
   darwin) platform="osx-$([[ "$arch" == "arm64" ]] && echo aarch64 || echo x64)" ;;
   linux) platform="linux-$([[ "$arch" == "aarch64" ]] && echo aarch64 || echo x64)" ;;
+  # Git Bash reports MSYS_NT or MINGW64_NT, and uname -m reports x86_64 there.
+  msys* | mingw* | cygwin*) platform="windows-x64" ;;
   *) echo "Unsupported host for JVM native packaging: $os" >&2; exit 1 ;;
 esac
 
@@ -50,7 +52,9 @@ if [[ "$os" == "linux" ]]; then
   cp -f "$ort" "$dest/"
 fi
 
-out="$repo_root/build/release/sherpa-onnx-kmp-jvm-native-$platform-$version.jar"
+# The JAR belongs in the release directory with every other artifact. Writing it
+# to build/release/ root made the manifest glob and the release upload miss it.
+out="$repo_root/build/release/$version/sherpa-onnx-kmp-jvm-native-$platform-$version.jar"
 mkdir -p "$(dirname "$out")"
 jar --create --file "$out" -C "$stage" .
 printf '%s\n' "$out"

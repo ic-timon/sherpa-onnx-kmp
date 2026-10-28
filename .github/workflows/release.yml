@@ -1,0 +1,357 @@
+name: release
+
+# Builds every platform slice and publishes them to one GitHub Release.
+#
+# The artifacts cannot come from a single runner: the Android AAR needs the NDK
+# and all four ABIs, the XCFramework needs Xcode, the Linux libraries need the
+# glibc they were built against, and the Windows DLL needs MSVC. Each job builds
+# and packages its own slice, and the `publish` job merges them, verifies the
+# complete set is present, and writes one checksum manifest.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version. Defaults to the version in sherpa-onnx-kmp/build.gradle.kts.'
+        required: false
+        type: string
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  resolve-version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: |
+          version=$(./scripts/print-release-version.sh "${{ inputs.version }}")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Release version: $version"
+
+  jvm-android:
+    needs: resolve-version
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      RELEASE_VERSION: ${{ needs.resolve-version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Ensure Android NDK
+        run: |
+          if [[ ! -d "$ANDROID_HOME/ndk/28.2.13676358" ]]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;28.2.13676358" >/dev/null
+          fi
+      - name: Build every Android ABI and assemble the AAR
+        run: ./scripts/build-android-all.sh
+      - name: Assert the packaged AAR is complete and TLS-free
+        run: ./scripts/check-android-aar.sh
+      - name: Package the AAR and the JVM API JAR
+        # The host's JNI library is packaged by the jvm-native-* jobs, which
+        # exist for every desktop platform rather than just the build host.
+        # The Apple slice needs Xcode and belongs to the apple job.
+        run: |
+          SHERPA_ONNX_KMP_SKIP_APPLE=1 SHERPA_ONNX_KMP_SKIP_NATIVE_JAR=1 \
+            ./scripts/package-release.sh "$RELEASE_VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-jvm-android
+          path: |
+            build/release/${{ needs.resolve-version.outputs.version }}/sherpa-onnx-kmp-android-*.aar
+            build/release/${{ needs.resolve-version.outputs.version }}/sherpa-onnx-kmp-jvm-*.jar
+          if-no-files-found: error
+
+  jvm-native:
+    needs: resolve-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: linux-x64
+          - runner: ubuntu-24.04-arm
+            platform: linux-aarch64
+          - runner: macos-15
+            platform: osx-aarch64
+          - runner: windows-2022
+            platform: windows-x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    env:
+      RELEASE_VERSION: ${{ needs.resolve-version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install native prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build build-essential
+      - name: Cache native dependencies and builds
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/sherpa-onnx-kmp
+            build/native
+            build/upstream
+          key: release-jvm-native-${{ matrix.platform }}-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/*.patch', 'native/**') }}
+      - name: Build the host portable bridge and JNI library
+        shell: bash
+        run: |
+          ./scripts/fetch-native-deps.sh
+          source_dir=$(./scripts/bootstrap-sherpa-source.sh | tail -n 1)
+          # The JVM native JAR needs both the JNI library and the bridge, so this
+          # configures a tree with JNI on. build-native-desktop.sh builds the
+          # bridge only, which is why it cannot be reused here.
+          cmake -S native -B build/native -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSHERPA_ONNX_SOURCE_DIR="$source_dir" \
+            -DSHERPA_ONNX_KMP_BUILD_TESTS=OFF
+          cmake --build build/native -j 4
+      - name: Package the JVM native JAR
+        shell: bash
+        run: |
+          # package-jvm-native.sh needs libonnxruntime.so on Linux because the
+          # bridge records it as DT_NEEDED and consumers do not install one.
+          # build-native-desktop.sh is what stages it.
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            ./scripts/build-native-desktop.sh "$(uname -m | sed -e 's/x86_64/x64/' -e 's/aarch64/arm64/')"
+          fi
+          ./scripts/package-jvm-native.sh "$RELEASE_VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-jvm-native-${{ matrix.platform }}
+          path: build/release/${{ needs.resolve-version.outputs.version }}/sherpa-onnx-kmp-jvm-native-*.jar
+          if-no-files-found: error
+
+  apple:
+    needs: resolve-version
+    runs-on: macos-15
+    timeout-minutes: 120
+    env:
+      RELEASE_VERSION: ${{ needs.resolve-version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Cache Apple native dependencies and builds
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/sherpa-onnx-kmp
+            build/upstream
+            build/apple
+            ~/.konan
+          key: apple-release-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/*.patch', 'native/**', 'sherpa-onnx-kmp/build.gradle.kts') }}
+      - name: Build Apple native dependencies
+        run: ./scripts/build-apple-native.sh all
+      - name: Build and verify the XCFramework
+        run: SHERPA_ONNX_KMP_SKIP_NATIVE=1 ./scripts/package-apple-xcframework.sh "$RELEASE_VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-apple
+          path: build/release/${{ needs.resolve-version.outputs.version }}/SherpaOnnxKmp.xcframework.zip
+          if-no-files-found: error
+
+  linux-x64:
+    needs: resolve-version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      RELEASE_VERSION: ${{ needs.resolve-version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install native prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build build-essential zip
+          cmake --version
+          ninja --version
+      - name: Cache native desktop dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/sherpa-onnx-kmp
+            build/upstream
+          key: release-linux-x64-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/*.patch', 'native/**') }}
+      - name: Build the Linux x64 libraries
+        run: ./scripts/build-native-desktop.sh linux-x64
+      - name: Package the Linux x64 slice
+        run: ./scripts/package-release-desktop.sh linux-x64 "$RELEASE_VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-x64
+          path: build/release/${{ needs.resolve-version.outputs.version }}/sherpa-onnx-kmp-linux-x64-*.zip
+          if-no-files-found: error
+
+  linux-arm64:
+    needs: resolve-version
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 150
+    env:
+      RELEASE_VERSION: ${{ needs.resolve-version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install native prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build build-essential zip
+          cmake --version
+          ninja --version
+      - name: Cache native desktop dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/sherpa-onnx-kmp
+            build/upstream
+          key: release-linux-arm64-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/*.patch', 'native/**') }}
+      - name: Build the Linux arm64 libraries
+        run: ./scripts/build-native-desktop.sh linux-arm64
+      - name: Package the Linux arm64 slice
+        run: ./scripts/package-release-desktop.sh linux-arm64 "$RELEASE_VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-arm64
+          path: build/release/${{ needs.resolve-version.outputs.version }}/sherpa-onnx-kmp-linux-arm64-*.zip
+          if-no-files-found: error
+
+  windows-x64:
+    needs: resolve-version
+    runs-on: windows-2022
+    timeout-minutes: 150
+    env:
+      RELEASE_VERSION: ${{ needs.resolve-version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Cache native desktop dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/sherpa-onnx-kmp
+            build/upstream
+          key: release-windows-x64-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/*.patch', 'native/**') }}
+      - name: Build the Windows x64 DLL
+        shell: bash
+        run: ./scripts/build-native-desktop.sh windows-x64
+      - name: Package the Windows x64 slice
+        shell: bash
+        run: ./scripts/package-release-desktop.sh windows-x64 "$RELEASE_VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-x64
+          path: build/release/${{ needs.resolve-version.outputs.version }}/sherpa-onnx-kmp-windows-x64-*.zip
+          if-no-files-found: error
+
+  web:
+    needs: resolve-version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      RELEASE_VERSION: ${{ needs.resolve-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build the Emscripten bridge and the sample bundle
+        run: ./scripts/build-web-emscripten.sh
+      - name: Assemble the deployable sample
+        run: |
+          dist=samples/web/dist
+          lib=samples/web/build/dist/js/productionLibrary
+          ./gradlew :samples:web:jsBrowserProductionLibraryDistribution --stacktrace
+          mkdir -p "$dist"
+          cp -f build/web/sherpa-onnx-bridge.js build/web/sherpa-onnx-bridge.wasm "$dist/"
+          cp -f samples/web/sherpa-onnx-worker.js samples/web/index.html "$dist/"
+          cp -f "$lib"/*.mjs "$dist/"
+      - name: Package the web slice
+        run: ./scripts/package-release-web.sh "$RELEASE_VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-web
+          path: build/release/${{ needs.resolve-version.outputs.version }}/sherpa-onnx-kmp-web-*.zip
+          if-no-files-found: error
+
+  publish:
+    needs: [resolve-version, jvm-android, jvm-native, apple, linux-x64, linux-arm64, windows-x64, web]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download every platform slice
+        uses: actions/download-artifact@v4
+        with:
+          path: build/release/${{ needs.resolve-version.outputs.version }}
+          pattern: release-*
+          merge-multiple: true
+      - name: Write the checksum manifest
+        env:
+          RELEASE_VERSION: ${{ needs.resolve-version.outputs.version }}
+        # No --allow-partial here on purpose: a missing platform must fail the
+        # release rather than ship a manifest that omits it.
+        run: |
+          ls -la "build/release/$RELEASE_VERSION"
+          ./scripts/write-release-checksums.sh "$RELEASE_VERSION"
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: |
+          out="build/release/$RELEASE_VERSION"
+          tag="v$RELEASE_VERSION"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag exists; uploading assets with --clobber"
+            gh release upload "$tag" "$out"/*.aar "$out"/*.jar "$out"/*.zip "$out"/SHA256SUMS --clobber
+          else
+            gh release create "$tag" \
+              --title "v$RELEASE_VERSION" \
+              --notes-file "docs/release-$RELEASE_VERSION.md" \
+              "$out"/*.aar "$out"/*.jar "$out"/*.zip "$out"/SHA256SUMS
+          fi
