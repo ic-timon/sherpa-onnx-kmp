@@ -68,19 +68,23 @@ jobs:
         run: |
           lib=build/native-desktop/linux-x64/lib/libsherpa-onnx-kmp-native-desktop.a
           test -f "$lib"
-          if nm -g --undefined-only "$lib" | grep -qi onnxruntime; then
-            echo "Unexpected external ONNX Runtime dependency" >&2
+          # The archive must define every Ort entry point it uses. An undefined
+          # Ort symbol would mean the static ONNX Runtime was not merged in.
+          if nm -g --undefined-only "$lib" 2>/dev/null | grep -q 'Ort'; then
+            echo "Undefined ONNX Runtime symbol in aggregate archive:" >&2
+            nm -g --undefined-only "$lib" | grep 'Ort' >&2
             exit 1
           fi
-          nm -g --defined-only "$lib" | grep -q 'SherpaOnnxBridgeAbiVersion'
-          nm -g --defined-only "$lib" | grep -q 'OrtGetApiBase'
+          defined=$(nm -g --defined-only "$lib" 2>/dev/null)
+          echo "$defined" | grep -q 'SherpaOnnxBridgeAbiVersion'
+          echo "$defined" | grep -q 'OrtGetApiBase'
           echo "Runtime dependency inspection: OK"
       - name: Build and test Linux x64 KMP target
         run: ./gradlew :sherpa-onnx-kmp:linuxX64Test --stacktrace
 
   linux-arm64:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 90
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -94,7 +98,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build build-essential
+            cmake ninja-build build-essential \
+            g++-aarch64-linux-gnu qemu-user-static
       - name: Cache native desktop dependencies
         uses: actions/cache@v4
         with:
@@ -106,8 +111,34 @@ jobs:
           key: desktop-linux-arm64-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch', 'native/**', 'sherpa-onnx-kmp/build.gradle.kts') }}
       - name: Build native desktop libraries
         run: ./scripts/build-native-desktop.sh linux-arm64
-      - name: Build and test Linux arm64 KMP target
-        run: ./gradlew :sherpa-onnx-kmp:linuxArm64Test --stacktrace
+      - name: Inspect runtime dependencies
+        run: |
+          lib=build/native-desktop/linux-arm64/lib/libsherpa-onnx-kmp-native-desktop.a
+          test -f "$lib"
+          file "$lib" | grep -q 'aarch64'
+          if aarch64-linux-gnu-nm -g --undefined-only "$lib" 2>/dev/null | grep -q 'Ort'; then
+            echo "Undefined ONNX Runtime symbol in aggregate archive:" >&2
+            aarch64-linux-gnu-nm -g --undefined-only "$lib" | grep 'Ort' >&2
+            exit 1
+          fi
+          defined=$(aarch64-linux-gnu-nm -g --defined-only "$lib" 2>/dev/null)
+          echo "$defined" | grep -q 'SherpaOnnxBridgeAbiVersion'
+          echo "$defined" | grep -q 'OrtGetApiBase'
+          echo "Runtime dependency inspection: OK"
+      - name: Link Linux arm64 test binary
+        run: >-
+          ./gradlew
+          :sherpa-onnx-kmp:linkDebugTestLinuxArm64
+          --stacktrace
+      - name: Run Linux arm64 tests under qemu
+        run: |
+          binary=$(find sherpa-onnx-kmp/build/bin/linuxArm64 -name "*.kexe" | head -n 1)
+          if [[ -z "$binary" ]]; then
+            echo "Linux arm64 test binary was not produced" >&2
+            exit 1
+          fi
+          file "$binary" | grep -q 'aarch64'
+          qemu-aarch64-static -L /usr/aarch64-linux-gnu "$binary"
 
   windows-x64:
     runs-on: windows-2022
@@ -143,7 +174,21 @@ jobs:
             build\native-desktop
             build\upstream
           key: desktop-windows-x64-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch', 'native/**', 'sherpa-onnx-kmp/build.gradle.kts') }}
+      - name: Configure git for symlinked upstream sources
+        run: git config --global core.symlinks false
       - name: Build native desktop libraries
         run: ./scripts/build-native-desktop.sh windows-x64
+      - name: Inspect runtime dependencies
+        run: |
+          dll=build/native-desktop/windows-x64/lib/sherpa-onnx-portable-bridge.dll
+          test -f "$dll"
+          defined=$(nm -g --defined-only "$dll" 2>/dev/null)
+          echo "$defined" | grep -q 'SherpaOnnxBridgeAbiVersion'
+          echo "$defined" | grep -q 'OrtGetApiBase'
+          if find build/native-desktop/windows-x64 -maxdepth 2 -iname 'onnxruntime.dll' | grep -q .; then
+            echo "A separate ONNX Runtime DLL was produced; ORT must be static" >&2
+            exit 1
+          fi
+          echo "Runtime dependency inspection: OK"
       - name: Build and test Windows x64 KMP target
         run: ./gradlew :sherpa-onnx-kmp:mingwX64Test --stacktrace

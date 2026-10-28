@@ -106,10 +106,9 @@ build_linux_arm64() {
     echo "linux-arm64 must be built on Linux (host is $host_os)" >&2
     return 1
   fi
-  if [[ "$(uname -m)" != "aarch64" && "$(uname -m)" != "arm64" ]]; then
-    echo "linux-arm64 requires an aarch64 Linux host" >&2
-    return 1
-  fi
+  # Kotlin/Native only supports x86_64 Linux as a compiler host, so the
+  # aarch64 library is cross-compiled from x64 and tested under qemu. A native
+  # aarch64 host is accepted too, in which case the default compiler is used.
   local ort_archive="$deps_root/onnxruntime-linux-aarch64-static_lib-1.28.2-glibc2_17.zip"
   local ort_root="$desktop_root/onnxruntime-linux-arm64"
   extract_zip_once "$ort_archive" "$ort_root"
@@ -119,13 +118,26 @@ build_linux_arm64() {
   local build_dir="$desktop_root/linux-arm64"
   export SHERPA_ONNXRUNTIME_LIB_DIR="$ort_dir/lib"
   export SHERPA_ONNXRUNTIME_INCLUDE_DIR="$ort_dir/include"
+
+  local toolchain_args=()
+  if [[ "$(uname -m)" != "aarch64" && "$(uname -m)" != "arm64" ]]; then
+    if ! command -v aarch64-linux-gnu-g++ >/dev/null 2>&1; then
+      echo "aarch64 cross toolchain is required: install g++-aarch64-linux-gnu" >&2
+      return 1
+    fi
+    toolchain_args=(
+      -DCMAKE_TOOLCHAIN_FILE="$repo_root/native/cmake/aarch64-linux-toolchain.cmake"
+    )
+  fi
+
   cmake -S native -B "$build_dir" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_SHARED_LIBS=OFF \
     -DSHERPA_ONNX_SOURCE_DIR="$source_dir" \
     -DSHERPA_ONNX_KMP_BUILD_JNI=OFF \
     -DSHERPA_ONNX_KMP_BUILD_TESTS=OFF \
-    -DSHERPA_ONNX_USE_PRE_INSTALLED_ONNXRUNTIME_IF_AVAILABLE=ON
+    -DSHERPA_ONNX_USE_PRE_INSTALLED_ONNXRUNTIME_IF_AVAILABLE=ON \
+    "${toolchain_args[@]}"
   cmake --build "$build_dir" -j "$jobs" \
     --target sherpa-onnx-portable-bridge-static
   merge_linux_archive "$build_dir" "$ort_dir/lib/libonnxruntime.a"
