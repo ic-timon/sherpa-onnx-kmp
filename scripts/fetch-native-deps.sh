@@ -102,8 +102,7 @@ if [[ "${SHERPA_ONNX_KMP_FETCH_APPLE:-0}" == "1" ]]; then
   fi
 fi
 
-if [[ "${SHERPA_ONNX_KMP_FETCH_ANDROID:-0}" == "1" ]]; then
-  android_name=onnxruntime-android-1.28.2.zip
+if [[ "${SHERPA_ONNX_KMP_FETCH_ANDROID:-0}" == "1" ]]; then  android_name=onnxruntime-android-1.28.2.zip
   android_hash=01518867f78241138b6aa25925802e843a4fa9085af8d303d49e35bbb52aff4d
   if [[ ! -f "$cache/$android_name" ]] || \
      [[ "$(sha256 "$cache/$android_name")" != "$android_hash" ]]; then
@@ -120,4 +119,49 @@ if [[ "${SHERPA_ONNX_KMP_FETCH_ANDROID:-0}" == "1" ]]; then
     fi
   fi
   cp -f "$cache/$android_name" "/tmp/$android_name"
+fi
+
+if [[ "${SHERPA_ONNX_KMP_FETCH_DESKTOP:-0}" == "1" ]]; then
+  fetch_desktop() {
+    local name=$1
+    local hash=$2
+    if [[ ! -f "$cache/$name" ]] || \
+       [[ "$(sha256 "$cache/$name")" != "$hash" ]]; then
+      if command -v gh >/dev/null 2>&1; then
+        gh release download v1.28.2 \
+          --repo csukuangfj/onnxruntime-libs \
+          --pattern "$name" \
+          --dir "$cache" \
+          --clobber
+      else
+        download \
+          "https://github.com/csukuangfj/onnxruntime-libs/releases/download/v1.28.2/$name" \
+          "$cache/$name" "$hash"
+      fi
+    fi
+    local actual
+    actual=$(sha256 "$cache/$name")
+    if [[ "$actual" != "$hash" ]]; then
+      echo "Checksum mismatch for $cache/$name" >&2
+      echo "expected: $hash" >&2
+      echo "actual:   $actual" >&2
+      exit 1
+    fi
+    # Upstream `cmake/onnxruntime-wasm-simd.cmake` probes `/tmp` for the Wasm
+    # runtime before downloading it, so publish the file there as well. This
+    # keeps the Emscripten build offline-deterministic and pinned.
+    cp -f "$cache/$name" "/tmp/$name"
+  }
+
+  fetch_desktop onnxruntime-linux-x64-glibc2_17-Release-1.28.2.zip \
+    c4f8994d56191d9d2c92a961b39fe790459f2c5d155f912b239506ea31359534
+  fetch_desktop onnxruntime-linux-aarch64-glibc2_17-Release-1.28.2.zip \
+    28083273643f40fa6477ef9d53986fe216304710c4b1c743b217a4effd016339
+  fetch_desktop onnxruntime-win-x64-static_lib-MT-Release-1.28.2.tar.bz2 \
+    77c6cc2a419828f450a570851d7d6d2385523c411dbe858f841a4c7338a78881
+  # WebAssembly runtime for the browser bridge. This hash matches the one
+  # pinned by upstream `cmake/onnxruntime-wasm-simd.cmake`, so a version bump
+  # cannot silently desynchronize the two.
+  fetch_desktop onnxruntime-wasm-static_lib-simd-1.28.2.zip \
+    88688849b67fed9ca0e9fb2bf92ce19a5def9e8c2c8c2df34eb235d25893232a
 fi

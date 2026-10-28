@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>sherpa-onnx-kmp web sample</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 40rem;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      button { font-size: 1rem; padding: 0.5rem 1rem; }
+      pre {
+        background: #f4f4f5;
+        padding: 1rem;
+        overflow-x: auto;
+        white-space: pre-wrap;
+      }
+      #status { color: #52525b; }
+    </style>
+  </head>
+  <body>
+    <h1>sherpa-onnx-kmp web sample</h1>
+    <p id="status">Loading…</p>
+    <p>
+      <button id="run" disabled>Transcribe the bundled sample</button>
+    </p>
+    <pre id="output"></pre>
+
+    <script type="module">
+      // Served next to this page (see samples/web/README.md):
+      //   sherpa-onnx-kmp-samples-web.mjs  (Kotlin/JS production bundle, ES module)
+      //   *.mjs                            (its Kotlin/JS module dependencies)
+      //   sherpa-onnx-worker.js            (worker entry)
+      //   sherpa-onnx-bridge.js            (Emscripten glue)
+      //   sherpa-onnx-bridge.wasm          (Emscripten module)
+      import { runSample } from "./sherpa-onnx-kmp-samples-web.mjs";
+
+      const status = document.getElementById("status");
+      const output = document.getElementById("output");
+      const button = document.getElementById("run");
+
+      // The sample model must be served from this directory:
+      //   model.int8.onnx, tokens.txt, test_wavs/0.wav
+      const modelBaseUrl = new URL("./models/nemo-ctc", location.href).href;
+
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        output.textContent = "";
+        try {
+          const text = await runSample(modelBaseUrl);
+          output.textContent = text;
+          status.textContent = "Done.";
+        } catch (error) {
+          output.textContent = String(error && error.stack ? error.stack : error);
+          status.textContent = "Failed — see output.";
+        } finally {
+          button.disabled = false;
+        }
+      });
+
+      status.textContent = "Ready. Click to transcribe.";
+      button.disabled = false;
+    </script>
+  </body>
+</html>

@@ -2,26 +2,43 @@ name: platform-native
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/platform-native.yml'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'native/**'
+      - 'patches/**'
+      - 'scripts/**'
+      - 'sherpa-onnx-kmp/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/platform-native.yml'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'native/**'
+      - 'patches/**'
+      - 'scripts/**'
+      - 'sherpa-onnx-kmp/**'
   schedule:
     - cron: '0 4 * * 1'
 
-jobs:
-  linux:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target: [linuxX64]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-      - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew :sherpa-onnx-kmp:linuxX64Test --stacktrace
+permissions:
+  contents: read
 
-  windows:
-    runs-on: windows-2022
+concurrency:
+  group: platform-native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-x64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -29,6 +46,235 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew :sherpa-onnx-kmp:mingwX64Test --stacktrace
-      - shell: pwsh
-        run: ./gradlew :sherpa-onnx-kmp:compileKotlinMingwX64 --stacktrace
+      - name: Install native prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build build-essential
+          cmake --version
+          ninja --version
+      - name: Cache native desktop dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/sherpa-onnx-kmp
+            build/upstream
+            ~/.konan
+          key: desktop-linux-x64-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch', 'native/**', 'sherpa-onnx-kmp/build.gradle.kts') }}
+      - name: Build native desktop libraries
+        run: ./scripts/build-native-desktop.sh linux-x64
+      - name: Inspect runtime dependencies
+        run: |
+          lib=build/native-desktop/linux-x64/lib/libsherpa-onnx-kmp-native-desktop.so
+          test -f "$lib"
+          test -f build/native-desktop/linux-x64/lib/libonnxruntime.so
+          # The bridge is a shared library: only its exported C ABI is a
+          # link-time dependency for Kotlin/Native. Materialize the symbol names
+          # once; piping `nm` into `grep -q` raises SIGPIPE under pipefail.
+          nm -D --defined-only "$lib" 2>/dev/null | awk '{print $NF}' > /tmp/exported.txt || true
+          wc -l /tmp/exported.txt
+          for symbol in \
+            SherpaOnnxBridgeAbiVersion \
+            SherpaOnnxBridgeInfoJson \
+            SherpaOnnxBridgeCreate \
+            SherpaOnnxBridgeCall \
+            SherpaOnnxBridgePushAudio \
+            SherpaOnnxBridgeDestroy \
+            SherpaOnnxBridgeFree; do
+            grep -Fxq "$symbol" /tmp/exported.txt || {
+              echo "Missing exported symbol: $symbol" >&2; exit 1; }
+          done
+          # The ONNX Runtime copy must be pinned to the glibc2_17 build, and the
+          # bridge must reference it by name.
+          readelf -d "$lib" | grep -q 'libonnxruntime' || {
+            echo "Bridge does not link against libonnxruntime" >&2
+            readelf -d "$lib" >&2; exit 1; }
+          echo "Runtime dependency inspection: OK"
+      - name: Build and test Linux x64 KMP target
+        run: |
+          # The test executable resolves the bridge through its rpath entries,
+          # which point next to the binary and into a sibling `lib/`. Stage the
+          # shared libraries in both places so either resolution wins.
+          ./gradlew :sherpa-onnx-kmp:linkDebugTestLinuxX64 --stacktrace
+          bin_dir=$(find sherpa-onnx-kmp/build/bin/linuxX64 -type d -name debugTest | head -n 1)
+          if [[ -z "$bin_dir" ]]; then
+            echo "Linux test binary directory was not produced" >&2
+            exit 1
+          fi
+          mkdir -p "$bin_dir/lib"
+          for so in libsherpa-onnx-kmp-native-desktop.so \
+                    libsherpa-onnx-portable-bridge.so \
+                    libonnxruntime.so; do
+            cp -f "build/native-desktop/linux-x64/lib/$so" "$bin_dir/"
+            cp -f "build/native-desktop/linux-x64/lib/$so" "$bin_dir/lib/"
+          done
+          ./gradlew :sherpa-onnx-kmp:linuxX64Test --stacktrace
+
+  linux-arm64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install native prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build build-essential \
+            g++-aarch64-linux-gnu qemu-user-static
+          # The Kotlin/Native binary is linked against the konan aarch64 sysroot
+          # (glibc 2.25), so it records `libcrypt.so.1` — a library Ubuntu split
+          # out of glibc into `libcrypt1` and stopped shipping in the base image.
+          # qemu runs with `-L /usr/aarch64-linux-gnu`, so the arm64 build of that
+          # package has to be unpacked into the cross sysroot.
+          sudo dpkg --add-architecture arm64
+          cd /tmp
+          curl -fsSLO http://ports.ubuntu.com/ubuntu-ports/pool/main/libx/libxcrypt/libcrypt1_4.4.36-4build1_arm64.deb
+          echo "5cd73ba112507dabd8e43b528ca9f530719a370e014b8e3e797770e6e940cccf  libcrypt1_4.4.36-4build1_arm64.deb" \
+            | sha256sum -c -
+          sudo dpkg -x libcrypt1_4.4.36-4build1_arm64.deb /tmp/libcrypt-arm64
+          sudo cp -a /tmp/libcrypt-arm64/usr/lib/aarch64-linux-gnu/libcrypt.so.1* \
+            /usr/aarch64-linux-gnu/lib/
+          ls -l /usr/aarch64-linux-gnu/lib/libcrypt.so.1*
+      - name: Cache native desktop dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/sherpa-onnx-kmp
+            build/upstream
+            ~/.konan
+          key: desktop-linux-arm64-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch', 'native/**', 'sherpa-onnx-kmp/build.gradle.kts') }}
+      - name: Build native desktop libraries
+        run: ./scripts/build-native-desktop.sh linux-arm64
+      - name: Inspect runtime dependencies
+        run: |
+          lib=build/native-desktop/linux-arm64/lib/libsherpa-onnx-kmp-native-desktop.so
+          test -f "$lib"
+          test -f build/native-desktop/linux-arm64/lib/libonnxruntime.so
+          file "$lib" | grep -q 'aarch64' || {
+            echo "Bridge library is not aarch64" >&2; file "$lib" >&2; exit 1; }
+          # Extract just the symbol names. `nm` prefixes a type letter and, for
+          # defined symbols, an address, so the last field is the name.
+          aarch64-linux-gnu-nm -D --defined-only "$lib" 2>/dev/null \
+            | awk '{print $NF}' > /tmp/exported-arm64.txt || true
+          wc -l /tmp/exported-arm64.txt
+          for symbol in \
+            SherpaOnnxBridgeAbiVersion \
+            SherpaOnnxBridgeInfoJson \
+            SherpaOnnxBridgeCreate \
+            SherpaOnnxBridgeCall \
+            SherpaOnnxBridgePushAudio \
+            SherpaOnnxBridgeDestroy \
+            SherpaOnnxBridgeFree; do
+            grep -Fxq "$symbol" /tmp/exported-arm64.txt || {
+              echo "Missing exported symbol: $symbol" >&2; exit 1; }
+          done
+          aarch64-linux-gnu-readelf -d "$lib" | grep -q 'libonnxruntime' || {
+            echo "Bridge does not link against libonnxruntime" >&2
+            aarch64-linux-gnu-readelf -d "$lib" >&2; exit 1; }
+          echo "Runtime dependency inspection: OK"
+      - name: Link Linux arm64 test binary
+        run: >-
+          ./gradlew
+          :sherpa-onnx-kmp:linkDebugTestLinuxArm64
+          --stacktrace
+      - name: Run Linux arm64 tests under qemu
+        run: |
+          binary=$(find sherpa-onnx-kmp/build/bin/linuxArm64 -name "*.kexe" | head -n 1)
+          if [[ -z "$binary" ]]; then
+            echo "Linux arm64 test binary was not produced" >&2
+            exit 1
+          fi
+          file "$binary" | grep -q 'aarch64'
+          # The test executable resolves the bridge through its rpath, which
+          # points next to the binary, so stage both libraries there.
+          bin_dir=$(dirname "$binary")
+          mkdir -p "$bin_dir/lib"
+          for so in libsherpa-onnx-kmp-native-desktop.so \
+                    libsherpa-onnx-portable-bridge.so \
+                    libonnxruntime.so; do
+            cp -f "build/native-desktop/linux-arm64/lib/$so" "$bin_dir/"
+            cp -f "build/native-desktop/linux-arm64/lib/$so" "$bin_dir/lib/"
+          done
+          qemu-aarch64-static -L /usr/aarch64-linux-gnu "$binary"
+
+  windows-x64:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Verify MSVC toolchain
+        run: |
+          cmake --version
+          cmake -G "Visual Studio 17 2022" -A x64 -S native -B build/toolchain-probe \
+            -DSHERPA_ONNX_KMP_BUILD_JNI=OFF \
+            -DSHERPA_ONNX_KMP_BUILD_TESTS=OFF 2>&1 | tail -5 || true
+          ls build/toolchain-probe | head
+      - name: Cache native desktop dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/sherpa-onnx-kmp
+            build/upstream
+          key: desktop-windows-x64-msvc-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch', 'native/**', 'sherpa-onnx-kmp/build.gradle.kts') }}
+      - name: Build native desktop libraries
+        shell: bash
+        run: ./scripts/build-native-desktop.sh windows-x64
+      - name: Inspect runtime dependencies
+        shell: bash
+        run: |
+          dll=build/native-desktop/windows-x64/lib/sherpa-onnx-portable-bridge.dll
+          implib=build/native-desktop/windows-x64/lib/sherpa-onnx-portable-bridge.lib
+          test -f "$dll"
+          test -f "$implib"
+          # `nm` from the MSYS2/Git Bash toolchain on the runner understands PE
+          # COFF import libraries, so the export check uses the import library
+          # instead of `dumpbin`, which is only on PATH inside a VS dev shell.
+          nm -g --defined-only "$implib" > /tmp/implib-symbols.txt
+          for symbol in \
+            SherpaOnnxBridgeAbiVersion \
+            SherpaOnnxBridgeInfoJson \
+            SherpaOnnxBridgeCreate \
+            SherpaOnnxBridgeCall \
+            SherpaOnnxBridgePushAudio \
+            SherpaOnnxBridgeDestroy \
+            SherpaOnnxBridgeFree; do
+            grep -q "$symbol" /tmp/implib-symbols.txt || {
+              echo "Import library is missing $symbol" >&2; exit 1; }
+          done
+          if find build/native-desktop/windows-x64 -iname 'onnxruntime.dll' | grep -q .; then
+            echo "A separate ONNX Runtime DLL was produced; ORT must be static" >&2
+            exit 1
+          fi
+          echo "Runtime dependency inspection: OK"
+      - name: Build and test Windows x64 KMP target
+        shell: bash
+        run: |
+          # A Kotlin/Native test executable resolves the bridge DLL at load time.
+          # Windows searches the executable's directory first, so the DLL is
+          # staged there before the test task runs.
+          ./gradlew :sherpa-onnx-kmp:linkDebugTestMingwX64 --stacktrace
+          bin_dir=$(find sherpa-onnx-kmp/build/bin/mingwX64 -type d -name debugTest | head -n 1)
+          if [[ -z "$bin_dir" ]]; then
+            echo "Windows test binary directory was not produced" >&2
+            exit 1
+          fi
+          cp -f build/native-desktop/windows-x64/lib/sherpa-onnx-portable-bridge.dll "$bin_dir/"
+          ls -la "$bin_dir"
+          ./gradlew :sherpa-onnx-kmp:mingwX64Test --stacktrace

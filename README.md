@@ -3,7 +3,8 @@
 Kotlin Multiplatform bindings and a portable native bridge for
 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx).
 
-> Status: v0.4.0 Apple integration is available as a preview.
+> Status: v0.5.0 adds native desktop for Linux x64/arm64 and Windows x64.
+> Apple support remains a preview.
 
 ## Goal
 

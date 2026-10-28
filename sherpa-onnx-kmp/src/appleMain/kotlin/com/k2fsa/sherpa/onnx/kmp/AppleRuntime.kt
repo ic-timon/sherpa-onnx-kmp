@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.k2fsa.sherpa.onnx.kmp
 
-import com.k2fsa.sherpa.onnx.kmp.internal.ApplePortableTransport
+import com.k2fsa.sherpa.onnx.kmp.internal.NativePortableTransport
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSBundle
 import platform.Foundation.NSFileManager
@@ -58,7 +58,7 @@ public class BundleModelStore(
 
 @Throws(Throwable::class)
 public suspend fun createSherpaRuntime(modelStore: ModelStore): SherpaRuntime =
-    createPortableSherpaRuntime(ApplePortableTransport, modelStore)
+    createPortableSherpaRuntime(NativePortableTransport, modelStore)
 
 private fun joinPath(root: String, relative: String): String =
     if (root.endsWith('/')) root + relative else "$root/$relative"

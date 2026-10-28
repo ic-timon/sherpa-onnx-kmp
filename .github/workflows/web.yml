@@ -1,0 +1,147 @@
+name: web
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/web.yml'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'native/**'
+      - 'patches/**'
+      - 'scripts/**'
+      - 'samples/web/**'
+      - 'sherpa-onnx-kmp/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/web.yml'
+      - 'native/**'
+      - 'scripts/**'
+      - 'samples/web/**'
+      - 'sherpa-onnx-kmp/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  emscripten:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build build-essential wabt
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 4.0.11
+          actions-cache-folder: emsdk-cache
+      - name: Verify Emscripten
+        run: emcc --version
+      - name: Cache native dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/sherpa-onnx-kmp
+            build/upstream
+            build/web-emscripten
+          key: web-emscripten-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch', 'native/**') }}
+      - name: Build the Emscripten bridge
+        run: ./scripts/build-web-emscripten.sh
+      - name: Inspect the Wasm bridge module
+        run: |
+          # `scripts/build-web-emscripten.sh` already asserted the JS glue
+          # surface, which is what the worker calls. This step only confirms the
+          # two artifacts exist and that the Wasm module exports a plausible
+          # number of functions, so a truncated or empty module cannot ship.
+          test -f build/web/sherpa-onnx-bridge.js
+          test -f build/web/sherpa-onnx-bridge.wasm
+          wasm-objdump -x build/web/sherpa-onnx-bridge.wasm > /tmp/wasm-exports.txt 2>/dev/null || \
+            (echo "wasm-objdump is required for export inspection" >&2; exit 1)
+          sed -n '/^Export\[/,$p' /tmp/wasm-exports.txt | head -20
+          exported_functions=$(grep -c -- '- func\[' /tmp/wasm-exports.txt || true)
+          if [[ "${exported_functions:-0}" -lt 9 ]]; then
+            echo "Wasm module exports too few functions: ${exported_functions:-0}" >&2
+            exit 1
+          fi
+          echo "Wasm exported functions: $exported_functions"
+          # The public entry points must be reachable through the glue under
+          # their stable names; `-O3` renames only the internal Wasm table.
+          for symbol in _SherpaOnnxBridgeAbiVersion _SherpaOnnxBridgeCreate \
+                        _SherpaOnnxBridgeCall _SherpaOnnxBridgePushAudio \
+                        _SherpaOnnxBridgeDestroy _SherpaOnnxBridgeFree; do
+            grep -Fq "$symbol" build/web/sherpa-onnx-bridge.js || {
+              echo "JS glue does not publish $symbol" >&2; exit 1; }
+          done
+          echo "Wasm export inspection: OK"
+      - name: Upload web artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-bridge
+          path: |
+            build/web/sherpa-onnx-bridge.js
+            build/web/sherpa-onnx-bridge.wasm
+          retention-days: 30
+      - name: Build the Kotlin/JS sample bundle
+        env:
+          YARN_REGISTRY: https://registry.npmjs.org
+        run: ./gradlew :samples:web:jsBrowserProductionLibraryDistribution --stacktrace
+      - name: Assemble the deployable sample
+        run: |
+          dist=samples/web/dist
+          lib=samples/web/build/dist/js/productionLibrary
+          mkdir -p "$dist"
+          cp -f build/web/sherpa-onnx-bridge.js build/web/sherpa-onnx-bridge.wasm "$dist/"
+          cp -f samples/web/sherpa-onnx-worker.js samples/web/index.html "$dist/"
+          # The bundle is an ES module, so every module it imports must be
+          # served beside it under the same name. Copying only the entry file
+          # produces a page that fails on its first `import`.
+          entry="$lib/sherpa-onnx-kmp-samples-web.mjs"
+          if [[ ! -f "$entry" ]]; then
+            echo "Kotlin/JS ES module bundle was not produced" >&2
+            ls -la "$lib" >&2
+            exit 1
+          fi
+          cp -f "$lib"/*.mjs "$dist/"
+          # Fail here rather than in the browser if a dependency is missing.
+          grep -q 'export' "$dist/sherpa-onnx-kmp-samples-web.mjs"
+          ls -la "$dist"
+      - name: Upload the deployable sample
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-sample
+          path: samples/web/dist
+          retention-days: 30
+
+  browser-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: emscripten
+    env:
+      YARN_REGISTRY: https://registry.npmjs.org
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Download web artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: web-bridge
+          path: build/web
+      - name: Run Kotlin/JS browser tests
+        run: ./gradlew :sherpa-onnx-kmp:jsBrowserTest --stacktrace

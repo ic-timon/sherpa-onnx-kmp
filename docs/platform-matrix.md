@@ -34,14 +34,20 @@
 
 - KMP targets: `linuxX64`, `linuxArm64`
 - Transport: Native cinterop
-- Library packaging remains an open decision.
+- Distribution: one shared bridge library per architecture
+  (`libsherpa-onnx-kmp-native-desktop.so` and its `SONAME` copy
+  `libsherpa-onnx-portable-bridge.so`, plus `libonnxruntime.so`)
+- Providers: CPU
+- `linuxArm64` cross-compiles on x86_64 and is tested under qemu
 
 ### Windows
 
 - KMP target: `mingwX64`
 - Transport: Native cinterop
+- Distribution: `sherpa-onnx-portable-bridge.dll` with static ONNX Runtime
+  embedded
 - Windows ARM64: JVM target
-- Native Windows may use dynamic linking if MinGW/MSVC static linkage is unsafe.
+- See [ADR 0007](adr/0007-native-desktop-linkage.md)
 
 ### JVM
 

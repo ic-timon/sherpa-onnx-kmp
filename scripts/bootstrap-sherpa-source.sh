@@ -16,7 +16,17 @@ download \
 
 if [[ ! -d "$source_dir" ]]; then
   mkdir -p "$source_dir"
-  tar -xzf "$archive" --strip-components=1 -C "$source_dir"
+  # Windows toolchains cannot create the symlinks that exist in upstream
+  # example and script directories. Only the library sources are needed, so a
+  # partial extraction is acceptable as long as the core headers and sources
+  # landed. The verification below is the real gate.
+  tar -xzf "$archive" --strip-components=1 -C "$source_dir" || true
+fi
+
+if [[ ! -f "$source_dir/sherpa-onnx/csrc/parse-options.h" ]]; then
+  echo "Extracted sherpa-onnx source is incomplete: $source_dir" >&2
+  echo "Retry after removing $source_dir" >&2
+  exit 1
 fi
 
 if ! grep -q "TrySetOption" "$source_dir/sherpa-onnx/csrc/parse-options.h"; then

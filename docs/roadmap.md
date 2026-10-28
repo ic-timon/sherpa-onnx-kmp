@@ -144,6 +144,7 @@ published or attached to the repository.
 - Runtime dependency inspection passes on each platform.
 - The same model and audio produce equivalent normalized transcripts.
 - Packaging documentation covers runtime-library placement.
+- The Linux/Windows linking decision is recorded in an ADR.
 
 ### Artifacts
 
