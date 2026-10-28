@@ -77,6 +77,13 @@ else
   wasm_symbols=""
 fi
 if [[ -n "$wasm_symbols" ]]; then
+  # Emscripten strips the leading underscore when naming Wasm exports, so the
+  # dump shows `SherpaOnnxBridgeAbiVersion`, not `_SherpaOnnxBridgeAbiVersion`.
+  if ! grep -q 'Export\[' "$wasm_symbols"; then
+    echo "wasm-objdump output has no export section:" >&2
+    head -40 "$wasm_symbols" >&2
+    exit 1
+  fi
   for symbol in \
     SherpaOnnxBridgeAbiVersion \
     SherpaOnnxBridgeInfoJson \
@@ -84,9 +91,13 @@ if [[ -n "$wasm_symbols" ]]; then
     SherpaOnnxBridgeCall \
     SherpaOnnxBridgePushAudio \
     SherpaOnnxBridgeDestroy \
-    SherpaOnnxBridgeFree; do
-    if ! grep -q "$symbol" "$wasm_symbols"; then
+    SherpaOnnxBridgeFree \
+    malloc \
+    free; do
+    if ! grep -q -- "- func\[[0-9]*\] <$symbol>" "$wasm_symbols"; then
       echo "Wasm module does not export $symbol" >&2
+      echo "Actual exports:" >&2
+      sed -n '/^Export\[/,$p' "$wasm_symbols" | head -30 >&2
       exit 1
     fi
   done

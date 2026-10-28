@@ -68,6 +68,8 @@ jobs:
           test -f "$wasm"
           wasm-objdump -x "$wasm" > /tmp/wasm-exports.txt 2>/dev/null || \
             (echo "wasm-objdump is required for export inspection" >&2; exit 1)
+          sed -n '/^Export\[/,$p' /tmp/wasm-exports.txt | head -40
+          # Emscripten drops the leading underscore when naming Wasm exports.
           for symbol in \
             SherpaOnnxBridgeAbiVersion \
             SherpaOnnxBridgeInfoJson \
@@ -75,8 +77,10 @@ jobs:
             SherpaOnnxBridgeCall \
             SherpaOnnxBridgePushAudio \
             SherpaOnnxBridgeDestroy \
-            SherpaOnnxBridgeFree; do
-            grep -q "$symbol" /tmp/wasm-exports.txt || {
+            SherpaOnnxBridgeFree \
+            malloc \
+            free; do
+            grep -q -- "- func\[[0-9]*\] <$symbol>" /tmp/wasm-exports.txt || {
               echo "Wasm module does not export $symbol" >&2
               exit 1
             }

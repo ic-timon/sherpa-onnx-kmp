@@ -110,6 +110,13 @@ if(EMSCRIPTEN)
   # Emscripten linker settings. The exported set is exactly the bridge C ABI
   # plus the two memory helpers the Kotlin/JS worker needs to copy audio into
   # the Wasm heap. Capability discovery on the Web must reflect this list.
+  #
+  # The list must be one comma-separated token with no whitespace. A quoted
+  # string containing single quotes survives shell parsing but CMake strips the
+  # quotes, leaving a malformed list that silently exports nothing.
+  set(SHERPA_ONNX_BRIDGE_WEB_EXPORTS
+    "_SherpaOnnxBridgeAbiVersion,_SherpaOnnxBridgeInfoJson,_SherpaOnnxBridgeCreate,_SherpaOnnxBridgeCall,_SherpaOnnxBridgePushAudio,_SherpaOnnxBridgeDestroy,_SherpaOnnxBridgeFree,_malloc,_free")
+
   target_link_options(sherpa-onnx-bridge-web PRIVATE
     -O3
     -sWASM=1
@@ -122,8 +129,8 @@ if(EMSCRIPTEN)
     -sMAXIMUM_MEMORY=2147483648
     -sFILESYSTEM=1
     -sASSERTIONS=0
-    "-sEXPORTED_FUNCTIONS=['_SherpaOnnxBridgeAbiVersion','_SherpaOnnxBridgeInfoJson','_SherpaOnnxBridgeCreate','_SherpaOnnxBridgeCall','_SherpaOnnxBridgePushAudio','_SherpaOnnxBridgeDestroy','_SherpaOnnxBridgeFree','_malloc','_free']"
-    "-sEXPORTED_RUNTIME_METHODS=['UTF8ToString','getValue','setValue','FS']"
+    "-sEXPORTED_FUNCTIONS=${SHERPA_ONNX_BRIDGE_WEB_EXPORTS}"
+    "-sEXPORTED_RUNTIME_METHODS=UTF8ToString,getValue,setValue,FS"
   )
 endif()
 
