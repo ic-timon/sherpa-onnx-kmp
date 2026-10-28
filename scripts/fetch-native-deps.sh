@@ -102,8 +102,7 @@ if [[ "${SHERPA_ONNX_KMP_FETCH_APPLE:-0}" == "1" ]]; then
   fi
 fi
 
-if [[ "${SHERPA_ONNX_KMP_FETCH_ANDROID:-0}" == "1" ]]; then
-  android_name=onnxruntime-android-1.28.2.zip
+if [[ "${SHERPA_ONNX_KMP_FETCH_ANDROID:-0}" == "1" ]]; then  android_name=onnxruntime-android-1.28.2.zip
   android_hash=01518867f78241138b6aa25925802e843a4fa9085af8d303d49e35bbb52aff4d
   if [[ ! -f "$cache/$android_name" ]] || \
      [[ "$(sha256 "$cache/$android_name")" != "$android_hash" ]]; then
@@ -120,4 +119,40 @@ if [[ "${SHERPA_ONNX_KMP_FETCH_ANDROID:-0}" == "1" ]]; then
     fi
   fi
   cp -f "$cache/$android_name" "/tmp/$android_name"
+fi
+
+if [[ "${SHERPA_ONNX_KMP_FETCH_DESKTOP:-0}" == "1" ]]; then
+  fetch_desktop() {
+    local name=$1
+    local hash=$2
+    if [[ ! -f "$cache/$name" ]] || \
+       [[ "$(sha256 "$cache/$name")" != "$hash" ]]; then
+      if command -v gh >/dev/null 2>&1; then
+        gh release download v1.28.2 \
+          --repo csukuangfj/onnxruntime-libs \
+          --pattern "$name" \
+          --dir "$cache" \
+          --clobber
+      else
+        download \
+          "https://github.com/csukuangfj/onnxruntime-libs/releases/download/v1.28.2/$name" \
+          "$cache/$name" "$hash"
+      fi
+    fi
+    local actual
+    actual=$(sha256 "$cache/$name")
+    if [[ "$actual" != "$hash" ]]; then
+      echo "Checksum mismatch for $cache/$name" >&2
+      echo "expected: $hash" >&2
+      echo "actual:   $actual" >&2
+      exit 1
+    fi
+  }
+
+  fetch_desktop onnxruntime-linux-x64-static_lib-1.28.2-glibc2_17.zip \
+    2dada92465b40a16fb5011956d93eaf90e3091cf621a953e5371a5e6a687794e
+  fetch_desktop onnxruntime-linux-aarch64-static_lib-1.28.2-glibc2_17.zip \
+    fba13fa68dbc9305512869bfa74f53a15e7af983c44ba8a9cbecbce5c21b33b3
+  fetch_desktop onnxruntime-win-x64-static_lib-MT-Release-1.28.2.tar.bz2 \
+    77c6cc2a419828f450a570851d7d6d2385523c411dbe858f841a4c7338a78881
 fi

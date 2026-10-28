@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.k2fsa.sherpa.onnx.kmp.internal
 
+import com.k2fsa.sherpa.onnx.kmp.AudioChunk
 import com.k2fsa.sherpa.onnx.kmp.AudioData
 import com.k2fsa.sherpa.onnx.kmp.BridgeHandle
 import com.k2fsa.sherpa.onnx.kmp.BridgeReply
@@ -17,9 +18,9 @@ import com.k2fsa.sherpa.onnx.kmp.cinterop.SherpaOnnxBridgeDestroy
 import com.k2fsa.sherpa.onnx.kmp.cinterop.SherpaOnnxBridgeFree
 import com.k2fsa.sherpa.onnx.kmp.cinterop.SherpaOnnxBridgeInfoJson
 import com.k2fsa.sherpa.onnx.kmp.cinterop.SherpaOnnxBridgePushAudio
+import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.CPointerVar
-import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ULongVar
 import kotlinx.cinterop.addressOf
@@ -32,8 +33,15 @@ import kotlinx.cinterop.value
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/**
+ * Portable Bridge transport shared by every Kotlin/Native target.
+ *
+ * Apple, Linux, and Windows differ only in linking and packaging, so the
+ * transport itself has no platform-conditional code. A target that links the
+ * bridge archive gets the same behavior.
+ */
 @OptIn(ExperimentalForeignApi::class)
-internal object ApplePortableTransport : PortableTransport {
+internal object NativePortableTransport : PortableTransport {
     override suspend fun infoJson(): String = bridgeCall {
         consumeString(SherpaOnnxBridgeInfoJson()).ifEmpty {
             throw SherpaOnnxException("Bridge returned empty capability information")

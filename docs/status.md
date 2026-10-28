@@ -26,7 +26,11 @@ Last updated: 2026-10-28
   ONNX Runtime framework.
 - The iOS sample installs, launches, and transcribes in Simulator.
 - The iOS device slice and sample app link without a physical device.
-- Native desktop and web transports are not implemented yet.
+- Native desktop (`linuxX64`, `linuxArm64`, `mingwX64`) shares
+  `NativePortableTransport` with Apple in `nativeMain`.
+- `FileModelStore` works on Linux and Windows; `BundleModelStore` is Apple-only.
+- Linux and Windows native libraries build with dedicated scripts and CI jobs.
+- The web transport is not implemented yet.
 - An upstream RFC/issue has not been opened yet.
 
 ## Accepted direction
@@ -48,7 +52,6 @@ Last updated: 2026-10-28
 
 - Run Apple inference on a physical iPhone and record the device, OS version,
   model checksum, and transcript before marking Apple support stable.
-- Native library distribution format for Linux and Windows.
 - Whether iOS x64 and macOS x64 remain compatibility-only targets.
 - Minimum supported browser versions for the web target.
 - Repository publication coordinates and release automation.
@@ -56,6 +59,5 @@ Last updated: 2026-10-28
 ## Immediate workstreams
 
 1. Complete the physical iPhone release gate when hardware is available.
-2. Implement Linux x64/arm64 and Windows x64 native desktop transports.
-3. Implement the Web Worker transport.
-4. Build the complete platform packaging and release matrix.
+2. Implement the Web Worker transport.
+3. Build the complete platform packaging and release matrix.

@@ -4,7 +4,32 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
-No unreleased changes.
+## [0.5.0] - 2026-10-28
+
+### Added
+
+- Linux x64/arm64 and Windows x64 `mingwX64` native desktop transports.
+- Shared `NativePortableTransport` in `nativeMain`, replacing the Apple-only
+  transport. Apple, Linux, and Windows now use one cinterop implementation.
+- `FileModelStore` and `createSherpaRuntime()` for Linux and Windows.
+- `build-native-desktop.sh` producing an aggregate static archive on Linux and
+  a bridge DLL on Windows.
+- `platform-native` CI building and testing all three desktop targets on native
+  runners, with runtime dependency inspection.
+- ADR 0007 recording the Linux static / Windows dynamic linking decision.
+
+### Verification
+
+- `linuxX64`, `linuxArm64`, and `mingwX64` compile and link.
+- Apple, JVM, and JS targets still compile and pass their tests.
+- The desktop contract suite runs without the pinned model and performs real
+  inference when `SHERPA_ONNX_KMP_TEST_MODEL_DIR` is set.
+
+### Known limitations
+
+- `linuxArm64` requires an aarch64 build host.
+- Desktop real-model inference runs in CI on native runners, not on the
+  development host.
 
 ## [0.4.0] - 2026-10-28
 

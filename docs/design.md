@@ -287,7 +287,8 @@ The core library consumes and produces Float32 PCM.
 
 - Android: AAR containing the JNI transport and required native libraries.
 - Apple: XCFramework with static bridge, sherpa-onnx, and ONNX Runtime.
-- Linux/Windows native: platform artifacts with bridge and sherpa libraries.
+- Linux native: one aggregate static archive per architecture.
+- Windows native: `sherpa-onnx-portable-bridge.dll` with static ONNX Runtime.
 - JVM: JNI transport plus platform native-library jars.
 - Web: Kotlin/JS artifact plus Emscripten Wasm and worker assets.
 
