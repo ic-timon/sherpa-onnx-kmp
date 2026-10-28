@@ -25,6 +25,20 @@ SHERPA_ONNX_KMP_FETCH_DESKTOP=1 ./scripts/fetch-native-deps.sh
 build_dir="$repo_root/build/web-emscripten"
 mkdir -p "$build_dir"
 
+# A cached build tree is only reusable while the Emscripten SDK sits at the same
+# path. `emcmake` bakes absolute paths to `Emscripten.cmake` and to `emcc` into
+# `CMakeFiles/<version>/CMakeSystem.cmake`, and CI installs the SDK under a fresh
+# temporary directory on every run, so a restored cache points at a compiler that
+# no longer exists. Detect that and start clean instead of failing configuration.
+if [[ -f "$build_dir/CMakeCache.txt" ]]; then
+  cached_emcc=$(sed -n 's/^CMAKE_C_COMPILER:.*=//p' "$build_dir/CMakeCache.txt" | head -n 1)
+  if [[ -n "$cached_emcc" && ! -x "$cached_emcc" ]]; then
+    printf 'Discarding the stale Emscripten build tree: %s is gone\n' "$cached_emcc"
+    rm -rf "$build_dir"
+    mkdir -p "$build_dir"
+  fi
+fi
+
 # `SHERPA_ONNX_ENABLE_WASM` is upstream's supported WebAssembly path. Without
 # it `cmake/onnxruntime.cmake` rejects Emscripten outright ("Only support Linux,
 # macOS, Windows, and Android"), because its downloader has no Wasm branch. With

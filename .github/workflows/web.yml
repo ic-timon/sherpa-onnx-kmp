@@ -56,8 +56,10 @@ jobs:
           path: |
             ~/.cache/sherpa-onnx-kmp
             build/upstream
-            build/web-emscripten
-          key: web-emscripten-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch', 'native/**') }}
+          # The Emscripten SDK is installed under a per-run temporary path, so a
+          # cached `build/web-emscripten` would bake compiler paths that no
+          # longer exist. Only the pinned dependencies are cached.
+          key: web-deps-js-sdk4.0.11-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch', 'native/**') }}
       - name: Build the Emscripten bridge
         run: ./scripts/build-web-emscripten.sh
       - name: Inspect the Wasm bridge module
