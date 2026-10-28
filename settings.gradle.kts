@@ -18,3 +18,4 @@ rootProject.name = "sherpa-onnx-kmp"
 include(":sherpa-onnx-kmp")
 include(":samples:jvm-cli")
 include(":samples:android-app")
+include(":samples:web")

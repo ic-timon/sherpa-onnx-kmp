@@ -66,18 +66,21 @@ jobs:
         run: ./scripts/build-native-desktop.sh linux-x64
       - name: Inspect runtime dependencies
         run: |
+          set -o pipefail
           lib=build/native-desktop/linux-x64/lib/libsherpa-onnx-kmp-native-desktop.a
           test -f "$lib"
-          defined=$(nm -g --defined-only "$lib" 2>/dev/null)
-          echo "$defined" | grep -q 'SherpaOnnxBridgeAbiVersion'
-          echo "$defined" | grep -q 'OrtGetApiBase'
-          # The archive must be self-contained: no undefined Ort C ABI entry
-          # points such as OrtCreateSession. C++ inline wrappers in the ORT
-          # headers resolve through OrtGetApiBase at runtime and legitimately
-          # stay undefined, so only the exported C entry points are checked.
-          if nm -g --undefined-only "$lib" 2>/dev/null | grep -qE '\bOrt(CreateSession|Run|CreateEnv|GetApi|ReleaseEnv)'; then
-            echo "Undefined ONNX Runtime C entry point in aggregate archive:" >&2
-            nm -g --undefined-only "$lib" | grep -E '\bOrt(CreateSession|Run|CreateEnv|GetApi|ReleaseEnv)' >&2
+          # Materialize the symbol tables once. Piping a large archive's nm
+          # output straight into `grep -q` raises SIGPIPE and, under pipefail,
+          # fails the step even when the symbol is present.
+          nm -g --defined-only "$lib" > /tmp/defined.txt 2>/dev/null || true
+          nm -g --undefined-only "$lib" > /tmp/undefined.txt 2>/dev/null || true
+          grep -Fxq 'SherpaOnnxBridgeAbiVersion' <(sed 's/.* //' /tmp/defined.txt) || {
+            echo "Missing SherpaOnnxBridgeAbiVersion" >&2; exit 1; }
+          grep -Fxq 'OrtGetApiBase' <(sed 's/.* //' /tmp/defined.txt) || {
+            echo "Missing OrtGetApiBase" >&2; exit 1; }
+          if grep -qE '^ *U +(OrtCreateSession|OrtRun|OrtCreateEnv|OrtReleaseEnv)$' /tmp/undefined.txt; then
+            echo "Undefined ONNX Runtime C entry point:" >&2
+            grep -E '^ *U +(OrtCreateSession|OrtRun|OrtCreateEnv|OrtReleaseEnv)$' /tmp/undefined.txt >&2
             exit 1
           fi
           echo "Runtime dependency inspection: OK"
@@ -115,18 +118,19 @@ jobs:
         run: ./scripts/build-native-desktop.sh linux-arm64
       - name: Inspect runtime dependencies
         run: |
+          set -o pipefail
           lib=build/native-desktop/linux-arm64/lib/libsherpa-onnx-kmp-native-desktop.a
           test -f "$lib"
           file "$lib" | grep -q 'aarch64'
-          defined=$(aarch64-linux-gnu-nm -g --defined-only "$lib" 2>/dev/null)
-          echo "$defined" | grep -q 'SherpaOnnxBridgeAbiVersion'
-          echo "$defined" | grep -q 'OrtGetApiBase'
-          # Only exported C entry points are checked. C++ inline wrappers in the
-          # ORT headers resolve through OrtGetApiBase at runtime and stay
-          # undefined by design.
-          if aarch64-linux-gnu-nm -g --undefined-only "$lib" 2>/dev/null | grep -qE '\bOrt(CreateSession|Run|CreateEnv|GetApi|ReleaseEnv)'; then
-            echo "Undefined ONNX Runtime C entry point in aggregate archive:" >&2
-            aarch64-linux-gnu-nm -g --undefined-only "$lib" | grep -E '\bOrt(CreateSession|Run|CreateEnv|GetApi|ReleaseEnv)' >&2
+          aarch64-linux-gnu-nm -g --defined-only "$lib" > /tmp/defined-arm64.txt 2>/dev/null || true
+          aarch64-linux-gnu-nm -g --undefined-only "$lib" > /tmp/undefined-arm64.txt 2>/dev/null || true
+          grep -Fxq 'SherpaOnnxBridgeAbiVersion' <(sed 's/.* //' /tmp/defined-arm64.txt) || {
+            echo "Missing SherpaOnnxBridgeAbiVersion" >&2; exit 1; }
+          grep -Fxq 'OrtGetApiBase' <(sed 's/.* //' /tmp/defined-arm64.txt) || {
+            echo "Missing OrtGetApiBase" >&2; exit 1; }
+          if grep -qE '^ *U +(OrtCreateSession|OrtRun|OrtCreateEnv|OrtReleaseEnv)$' /tmp/undefined-arm64.txt; then
+            echo "Undefined ONNX Runtime C entry point:" >&2
+            grep -E '^ *U +(OrtCreateSession|OrtRun|OrtCreateEnv|OrtReleaseEnv)$' /tmp/undefined-arm64.txt >&2
             exit 1
           fi
           echo "Runtime dependency inspection: OK"

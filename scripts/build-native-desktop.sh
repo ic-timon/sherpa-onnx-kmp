@@ -152,18 +152,35 @@ build_windows_x64() {
   local ort_root="$desktop_root/onnxruntime-win-x64"
   extract_tar_once "$ort_archive" "$ort_root" 1
 
+  # sherpa-onnx's onnxruntime.cmake treats `onnxruntime.lib` on WIN32 as a DLL
+  # import library and then requires a DLL to glob. This package is the static
+  # distribution, so stage the same archive under the `libonnxruntime.a` name
+  # that takes the upstream static-lib branch instead.
+  local staged="$desktop_root/onnxruntime-win-x64-staged"
+  mkdir -p "$staged/lib" "$staged/include"
+  cp -f "$ort_root/lib/onnxruntime.lib" "$staged/lib/libonnxruntime.a"
+  cp -rf "$ort_root/include/." "$staged/include/"
+
   local build_dir="$desktop_root/windows-x64"
-  export SHERPA_ONNXRUNTIME_LIB_DIR="$ort_root/lib"
-  export SHERPA_ONNXRUNTIME_INCLUDE_DIR="$ort_root/include"
+  export SHERPA_ONNXRUNTIME_LIB_DIR="$staged/lib"
+  export SHERPA_ONNXRUNTIME_INCLUDE_DIR="$staged/include"
   # Windows links the bridge as a shared library. ONNX Runtime is static, so the
   # bridge carries ORT internally and only the bridge DLL ships next to the app.
+  #
+  # `SBPE_COMPILER_SUPPORTS_CXX14=TRUE` bypasses an upstream CMake check in
+  # simple-sentencepiece that probes the MSVC-only `/std:c++14` flag on WIN32.
+  # MinGW's g++ rejects that flag even though it supports C++14 and C++17, so
+  # the probe fails and configuration aborts. The check is a build-time guard,
+  # not a behavioral switch, so pre-seeding the result is safe here.
   cmake -S native -B "$build_dir" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_SHARED_LIBS=ON \
+    -DCMAKE_CXX_STANDARD=17 \
     -DSHERPA_ONNX_SOURCE_DIR="$source_dir" \
     -DSHERPA_ONNX_KMP_BUILD_JNI=OFF \
     -DSHERPA_ONNX_KMP_BUILD_TESTS=OFF \
-    -DSHERPA_ONNX_USE_PRE_INSTALLED_ONNXRUNTIME_IF_AVAILABLE=ON
+    -DSHERPA_ONNX_USE_PRE_INSTALLED_ONNXRUNTIME_IF_AVAILABLE=ON \
+    -DSBPE_COMPILER_SUPPORTS_CXX14=TRUE
   cmake --build "$build_dir" -j "$jobs" \
     --target sherpa-onnx-portable-bridge
 
