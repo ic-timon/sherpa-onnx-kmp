@@ -85,24 +85,27 @@ case "$platform" in
 esac
 
 # A library that still points at the build machine is a broken artifact, not a
-# portability caveat. This is the same invariant check-release-hardening.sh
-# asserts for the host build. `readelf` only exists on Linux, and this slice is
-# only ever packaged on a Linux runner, so its absence is an error rather than a
-# silent skip.
+# portability caveat. `$ORIGIN`-relative search paths are the correct answer and
+# are accepted; anything that names a directory on the build host is rejected.
+# This is the same invariant check-release-hardening.sh asserts for the host
+# build. `readelf` only exists on Linux, and this slice is only ever packaged on
+# a Linux runner, so its absence is an error rather than a silent skip.
 if [[ "$platform" == linux-* ]]; then
   if ! command -v readelf >/dev/null 2>&1; then
     echo "readelf is required to audit Linux libraries; install binutils" >&2
     exit 1
   fi
   for lib in "$root"/lib/*.so; do
-    if readelf -d "$lib" 2>/dev/null | grep -qE 'RPATH|RUNPATH'; then
-      paths=$(readelf -d "$lib" | grep -E 'RPATH|RUNPATH')
-      case "$paths" in
-        *"/home/"* | *"/Users/"* | *"/runner/"*)
-          echo "Release library $lib leaks a build path: $paths" >&2
-          exit 1
-          ;;
-      esac
+    paths=$(readelf -d "$lib" 2>/dev/null | grep -E 'RPATH|RUNPATH' || true)
+    [[ -n "$paths" ]] || continue
+    # A relative entry is resolved beside the library and travels with the
+    # archive. A path under the build host does not.
+    leaks=$(printf '%s\n' "$paths" | grep -oE '\[[^]]*\]' | tr -d '[]' | \
+            tr ':' '\n' | grep -E '^/' || true)
+    if [[ -n "$leaks" ]]; then
+      echo "Release library $lib has an absolute runtime search path:" >&2
+      printf '  %s\n' "$leaks" >&2
+      exit 1
     fi
   done
 fi

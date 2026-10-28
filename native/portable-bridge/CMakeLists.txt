@@ -73,6 +73,26 @@ target_link_libraries(sherpa-onnx-portable-bridge
 set_target_properties(sherpa-onnx-portable-bridge PROPERTIES
   OUTPUT_NAME sherpa-onnx-portable-bridge
 )
+# A bridge that resolves libonnxruntime.so through a runpath baked in at build
+# time only runs on the machine that built it. `$ORIGIN` makes it resolve beside
+# itself, which is where the release archive puts both libraries.
+#
+# BUILD_WITH_INSTALL_RPATH matters: the release archive is assembled from the
+# build tree, not from `cmake --install`, so without it the shipped library
+# carries the build RUNPATH instead of the install one. Linking is unaffected —
+# the linker still finds ONNX Runtime through the -L paths — only the recorded
+# runtime search path changes.
+if(APPLE)
+  set_target_properties(sherpa-onnx-portable-bridge PROPERTIES
+    BUILD_WITH_INSTALL_RPATH YES
+    INSTALL_RPATH "@loader_path"
+  )
+elseif(UNIX)
+  set_target_properties(sherpa-onnx-portable-bridge PROPERTIES
+    BUILD_WITH_INSTALL_RPATH YES
+    INSTALL_RPATH "$ORIGIN"
+  )
+endif()
 
 add_library(sherpa-onnx-portable-bridge-static STATIC
   src/bridge.cc

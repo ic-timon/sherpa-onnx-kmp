@@ -120,16 +120,39 @@ jobs:
       - name: Build the host portable bridge and JNI library
         shell: bash
         run: |
-          ./scripts/fetch-native-deps.sh
-          source_dir=$(./scripts/bootstrap-sherpa-source.sh | tail -n 1)
-          # The JVM native JAR needs both the JNI library and the bridge, so this
-          # configures a tree with JNI on. build-native-desktop.sh builds the
-          # bridge only, which is why it cannot be reused here.
-          cmake -S native -B build/native -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DSHERPA_ONNX_SOURCE_DIR="$source_dir" \
-            -DSHERPA_ONNX_KMP_BUILD_TESTS=OFF
-          cmake --build build/native -j 4
+          case "$RUNNER_OS" in
+            Linux)
+              case "$(uname -m)" in
+                x86_64) desktop_target=linux-x64 ;;
+                aarch64 | arm64) desktop_target=linux-arm64 ;;
+                *) echo "Unsupported Linux arch: $(uname -m)" >&2; exit 1 ;;
+              esac ;;
+            macOS) desktop_target=APPLE ;;
+            Windows) desktop_target=windows-x64 ;;
+            *) echo "Unsupported runner: $RUNNER_OS" >&2; exit 1 ;;
+          esac
+          # macOS uses the Apple build script; Linux and Windows use the desktop
+          # one, which owns the per-platform ONNX Runtime staging and CMake
+          # generator flags. Asking it for JNI as well avoids duplicating those
+          # flags here, where they would drift.
+          if [[ "$desktop_target" == "APPLE" ]]; then
+            ./scripts/build-apple-native.sh all
+            source_dir=$(./scripts/bootstrap-sherpa-source.sh | tail -n 1)
+            cmake -S native -B build/native -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DSHERPA_ONNX_SOURCE_DIR="$source_dir" \
+              -DSHERPA_ONNX_KMP_BUILD_TESTS=OFF
+            cmake --build build/native -j 4
+          else
+            SHERPA_ONNX_KMP_DESKTOP_WITH_JNI=1 ./scripts/build-native-desktop.sh "$desktop_target"
+            mkdir -p build/native/lib
+            # package-jvm-native.sh reads build/native/lib, so stage the two
+            # libraries the desktop build produced into that tree.
+            find "build/native-desktop/$desktop_target" -name "sherpa-onnx-kmp-jni*" \
+              -not -name "*.a" -not -name "*.lib" -exec cp -f {} build/native/lib/ \;
+            find "build/native-desktop/$desktop_target" -name "sherpa-onnx-portable-bridge.*" \
+              -not -name "*.a" -not -name "*.lib" -exec cp -f {} build/native/lib/ \;
+          fi
       - name: Package the JVM native JAR
         shell: bash
         run: |
@@ -137,7 +160,12 @@ jobs:
           # bridge records it as DT_NEEDED and consumers do not install one.
           # build-native-desktop.sh is what stages it.
           if [[ "$RUNNER_OS" == "Linux" ]]; then
-            ./scripts/build-native-desktop.sh "$(uname -m | sed -e 's/x86_64/x64/' -e 's/aarch64/arm64/')"
+            case "$(uname -m)" in
+              x86_64) desktop_target=linux-x64 ;;
+              aarch64 | arm64) desktop_target=linux-arm64 ;;
+              *) echo "Unsupported Linux arch: $(uname -m)" >&2; exit 1 ;;
+            esac
+            ./scripts/build-native-desktop.sh "$desktop_target"
           fi
           ./scripts/package-jvm-native.sh "$RELEASE_VERSION"
       - uses: actions/upload-artifact@v4
@@ -301,6 +329,29 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build build-essential wabt zip
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 4.0.11
+          actions-cache-folder: emsdk-cache
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Verify Emscripten
+        run: emcc --version
+      - name: Cache native dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/sherpa-onnx-kmp
+            build/upstream
+          # The Emscripten SDK is installed under a per-run temporary path, so a
+          # cached build tree would bake compiler paths that no longer exist.
+          key: release-web-deps-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/*.patch', 'native/**') }}
       - name: Build the Emscripten bridge and the sample bundle
         run: ./scripts/build-web-emscripten.sh
       - name: Assemble the deployable sample

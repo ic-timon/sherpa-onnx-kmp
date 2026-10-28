@@ -18,6 +18,15 @@ desktop_root="$repo_root/build/native-desktop"
 # because they need the platform C++ runtime and ONNX Runtime distribution.
 host_os="$(uname -s)"
 
+# The desktop libraries exist to be linked by Kotlin/Native, which needs only the
+# bridge. The JVM native JAR additionally needs the JNI library, so allow the
+# release job to ask for both from one configure step rather than duplicating the
+# per-platform CMake flags in a workflow.
+jni_flag="OFF"
+if [[ "${SHERPA_ONNX_KMP_DESKTOP_WITH_JNI:-0}" == "1" ]]; then
+  jni_flag="ON"
+fi
+
 SHERPA_ONNX_KMP_FETCH_DESKTOP=1 ./scripts/fetch-native-deps.sh
 
 extract_zip_once() {
@@ -179,11 +188,14 @@ build_linux_x64() {
     -DBUILD_SHARED_LIBS=ON \
     -DSHERPA_ONNX_LINK_LIBSTDCPP_STATICALLY=OFF \
     -DSHERPA_ONNX_SOURCE_DIR="$source_dir" \
-    -DSHERPA_ONNX_KMP_BUILD_JNI=OFF \
+    -DSHERPA_ONNX_KMP_BUILD_JNI=${jni_flag} \
     -DSHERPA_ONNX_KMP_BUILD_TESTS=OFF \
     -DSHERPA_ONNX_USE_PRE_INSTALLED_ONNXRUNTIME_IF_AVAILABLE=ON
-  cmake --build "$build_dir" -j "$jobs" \
-    --target sherpa-onnx-portable-bridge
+  local targets=(sherpa-onnx-portable-bridge)
+  if [[ "$jni_flag" == "ON" ]]; then
+    targets+=(sherpa-onnx-kmp-jni)
+  fi
+  cmake --build "$build_dir" -j "$jobs" --target "${targets[@]}"
   package_linux_shared_library "$build_dir"
   inspect_linux_shared_library "$build_dir"
 }
@@ -222,12 +234,15 @@ build_linux_arm64() {
     -DBUILD_SHARED_LIBS=ON \
     -DSHERPA_ONNX_LINK_LIBSTDCPP_STATICALLY=OFF \
     -DSHERPA_ONNX_SOURCE_DIR="$source_dir" \
-    -DSHERPA_ONNX_KMP_BUILD_JNI=OFF \
+    -DSHERPA_ONNX_KMP_BUILD_JNI=${jni_flag} \
     -DSHERPA_ONNX_KMP_BUILD_TESTS=OFF \
     -DSHERPA_ONNX_USE_PRE_INSTALLED_ONNXRUNTIME_IF_AVAILABLE=ON \
     "${toolchain_args[@]}"
-  cmake --build "$build_dir" -j "$jobs" \
-    --target sherpa-onnx-portable-bridge
+  local targets=(sherpa-onnx-portable-bridge)
+  if [[ "$jni_flag" == "ON" ]]; then
+    targets+=(sherpa-onnx-kmp-jni)
+  fi
+  cmake --build "$build_dir" -j "$jobs" --target "${targets[@]}"
   package_linux_shared_library "$build_dir"
 
   # arm64 uses the aarch64 archiver/nm, which the host toolchain does not put on
@@ -269,11 +284,14 @@ build_windows_x64() {
     -DCMAKE_CXX_STANDARD=17 \
     -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded \
     -DSHERPA_ONNX_SOURCE_DIR="$source_dir" \
-    -DSHERPA_ONNX_KMP_BUILD_JNI=OFF \
+    -DSHERPA_ONNX_KMP_BUILD_JNI=${jni_flag} \
     -DSHERPA_ONNX_KMP_BUILD_TESTS=OFF \
     -DSHERPA_ONNX_USE_PRE_INSTALLED_ONNXRUNTIME_IF_AVAILABLE=ON
-  cmake --build "$build_dir" --config Release -j "$jobs" \
-    --target sherpa-onnx-portable-bridge
+  local targets=(sherpa-onnx-portable-bridge)
+  if [[ "$jni_flag" == "ON" ]]; then
+    targets+=(sherpa-onnx-kmp-jni)
+  fi
+  cmake --build "$build_dir" --config Release -j "$jobs" --target "${targets[@]}"
 
   local dll
   dll=$(find "$build_dir" -name "sherpa-onnx-portable-bridge.dll" | head -n 1)
