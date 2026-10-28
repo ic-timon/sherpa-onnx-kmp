@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-10-28
+## [1.0.0] - 2026-10-29
 
 The first stable release. The public Kotlin API, the Portable Bridge ABI, and
 the result schema are frozen under semantic versioning: additive changes ship in
@@ -38,6 +38,15 @@ supersedes the current contract.
   Android build. `scripts/check-android-aar.sh` now asserts that no bridge
   imports a TLS helper on any ABI, so a future upstream bump that reintroduces
   one fails the release rather than the device.
+- Windows TTS builds no longer fail on `openfst`'s `randgen.h`, whose
+  `using namespace std;` collides with the `<windows.h>` `min`/`max` macros now
+  that the TTS path pulls it into the bridge. The native build defines
+  `NOMINMAX` on `WIN32`.
+- The Apple sample project links `build/release/current` instead of a hardcoded
+  release directory, so packaging a new version no longer leaves the samples
+  pointing at a version that does not exist. Package downloads retry with
+  backoff instead of failing a workflow on a transient `api.github.com`
+  timeout.
 - `scripts/package-jvm-native.sh` emits the versioned
   `sherpa-onnx-kmp-jvm-native-<platform>-<version>.jar` name and ships only the
   runtime libraries, not the static archives that tripled the download.
