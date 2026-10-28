@@ -346,12 +346,38 @@ jobs:
         run: |
           out="build/release/$RELEASE_VERSION"
           tag="v$RELEASE_VERSION"
+          notes="docs/release-$RELEASE_VERSION.md"
+          # A release with no notes file is still better than a failed publish,
+          # but it must say so rather than pretend the notes were attached.
+          if [[ ! -f "$notes" ]]; then
+            echo "No release notes at $notes; using a generated body" >&2
+            notes=$(mktemp)
+            printf 'sherpa-onnx-kmp %s\n\nSee CHANGELOG.md and docs/release-*.md.\n' \
+              "$RELEASE_VERSION" > "$notes"
+          fi
+          # Every artifact in the manifest must be uploaded, or the checksums
+          # describe files that are not on the release page.
+          assets=()
+          while IFS= read -r file; do
+            [[ -n "$file" ]] && assets+=("$file")
+          done < <(awk '{print $2}' "$out/SHA256SUMS")
+          if (( ${#assets[@]} == 0 )); then
+            echo "SHA256SUMS lists no artifacts" >&2
+            exit 1
+          fi
+          upload=()
+          for name in "${assets[@]}"; do
+            upload+=("$out/$name")
+          done
+          upload+=("$out/SHA256SUMS")
+          echo "Uploading ${#assets[@]} artifacts plus the manifest"
+          printf '  %s\n' "${assets[@]}"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "Release $tag exists; uploading assets with --clobber"
-            gh release upload "$tag" "$out"/*.aar "$out"/*.jar "$out"/*.zip "$out"/SHA256SUMS --clobber
+            gh release upload "$tag" "${upload[@]}" --clobber
           else
             gh release create "$tag" \
               --title "v$RELEASE_VERSION" \
-              --notes-file "docs/release-$RELEASE_VERSION.md" \
-              "$out"/*.aar "$out"/*.jar "$out"/*.zip "$out"/SHA256SUMS
+              --notes-file "$notes" \
+              "${upload[@]}"
           fi
