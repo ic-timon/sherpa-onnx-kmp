@@ -145,3 +145,34 @@ jobs:
           path: build/web
       - name: Run Kotlin/JS browser tests
         run: ./gradlew :sherpa-onnx-kmp:jsBrowserTest --stacktrace
+
+  browser-e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    needs: emscripten
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Download the deployable sample
+        uses: actions/download-artifact@v4
+        with:
+          name: web-sample
+          path: samples/web/dist
+      - name: Cache the pinned model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/sherpa-onnx-kmp/models
+          key: web-e2e-model-nemo-ctc-fa-shenava-int8-2026-06-26
+      - name: Cache the browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-1.56.1-chromium-${{ runner.os }}
+      # The script installs Playwright into a scratch directory and drives a
+      # headless Chromium against a static server. It asserts a non-empty
+      # transcript from the pinned model, matching the bar the native and
+      # Android integration tests set.
+      - name: Transcribe the pinned model in a real browser
+        run: ./scripts/test-web-browser.sh samples/web/dist
