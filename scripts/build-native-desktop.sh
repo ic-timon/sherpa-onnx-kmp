@@ -55,10 +55,12 @@ inspect_linux_shared_library() {
   # Cross builds need the target archiver/nm; the host tools cannot read
   # aarch64 objects. Pick the prefixed tools when they exist.
   local nm_bin=nm
+  local readelf_bin=readelf
   if [[ "$(uname -m)" != "aarch64" && "$(uname -m)" != "arm64" ]] && \
      [[ "$build_dir" == *"linux-arm64"* ]] && \
      command -v aarch64-linux-gnu-nm >/dev/null 2>&1; then
     nm_bin=aarch64-linux-gnu-nm
+    readelf_bin=aarch64-linux-gnu-readelf
   fi
 
   if [[ ! -s "$library" ]]; then
@@ -84,15 +86,26 @@ inspect_linux_shared_library() {
     fi
   done
 
-  # ONNX Runtime must be inside the library, not a separate runtime dependency
-  # that a host application would have to ship on its own.
-  if ! "$nm_bin" "$library" 2>/dev/null | grep -qw 'OrtGetApiBase'; then
-    echo "Shared library does not contain a statically linked ONNX Runtime" >&2
+  # ONNX Runtime is a sibling shared library in this packaging model, so the
+  # bridge must record it as a NEEDED entry. A bridge without it would fail at
+  # load time with an unresolved `OrtGetApiBase`.
+  if ! "$readelf_bin" -d "$library" | grep -q 'libonnxruntime'; then
+    echo "Bridge does not record a libonnxruntime dependency" >&2
+    "$readelf_bin" -d "$library" >&2
     return 1
   fi
+  local runtime
+  runtime=$(find "$build_dir" -name "libonnxruntime.so*" | head -n 1)
+  if [[ -z "$runtime" ]]; then
+    echo "libonnxruntime.so did not accompany the bridge" >&2
+    return 1
+  fi
+  # Both files ship together, so keep them side by side.
+  cp -f "$runtime" "$build_dir/lib/"
 
   printf 'Linux shared library: %s (%s bytes)\n' \
     "$library" "$(stat -c%s "$library")"
+  printf 'ONNX Runtime runtime: %s\n' "$build_dir/lib/$(basename "$runtime")"
   printf 'Exported symbols: %s\n' "$(grep -c . < "$symbols")"
 }
 
@@ -116,7 +129,7 @@ build_linux_x64() {
     echo "linux-x64 must be built on Linux (host is $host_os)" >&2
     return 1
   fi
-  local ort_archive="$deps_root/onnxruntime-linux-x64-static_lib-1.28.2-glibc2_17.zip"
+  local ort_archive="$deps_root/onnxruntime-linux-x64-glibc2_17-Release-1.28.2.zip"
   local ort_root="$desktop_root/onnxruntime-linux-x64"
   extract_zip_once "$ort_archive" "$ort_root"
   local ort_dir
@@ -154,7 +167,7 @@ build_linux_arm64() {
   # Kotlin/Native only supports x86_64 Linux as a compiler host, so the
   # aarch64 library is cross-compiled from x64 and tested under qemu. A native
   # aarch64 host is accepted too, in which case the default compiler is used.
-  local ort_archive="$deps_root/onnxruntime-linux-aarch64-static_lib-1.28.2-glibc2_17.zip"
+  local ort_archive="$deps_root/onnxruntime-linux-aarch64-glibc2_17-Release-1.28.2.zip"
   local ort_root="$desktop_root/onnxruntime-linux-arm64"
   extract_zip_once "$ort_archive" "$ort_root"
   local ort_dir

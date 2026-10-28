@@ -10,10 +10,13 @@ cinterop transport that Apple uses. Only linking and packaging differ.
 ## Artifacts
 
 - `libsherpa-onnx-kmp-native-desktop.so`
-  - `linux-x64`: shared bridge with sherpa-onnx and a static ONNX Runtime linked
-    inside it. No `libonnxruntime.so` is required.
-  - `linux-arm64`: same shared library, built by cross-compiling with the
-    aarch64 toolchain.
+  - `linux-x64`: shared bridge with sherpa-onnx. Ships with `libonnxruntime.so`
+    from the pinned `glibc2_17` shared build.
+  - `linux-arm64`: same pair, built by cross-compiling with the aarch64
+    toolchain.
+- `libonnxruntime.so`
+  - Pinned ONNX Runtime for both Linux architectures. It is a sibling of the
+    bridge, not embedded; see ADR 0008.
 - `sherpa-onnx-portable-bridge.dll`
   - `windows-x64`: shared bridge with static ONNX Runtime embedded; no
     `onnxruntime.dll` is required.
@@ -26,9 +29,8 @@ consumer packaging notes.
 ## Verification
 
 - `linuxX64`, `linuxArm64`, and `mingwX64` compile and link in CI.
-- The Linux shared library exports the full `SherpaOnnxBridge*` C ABI, defines
-  `OrtGetApiBase` internally, and reports no `libonnxruntime` dynamic
-  dependency.
+- The Linux shared library exports the full `SherpaOnnxBridge*` C ABI and
+  records a `libonnxruntime` `NEEDED` entry.
 - The Windows bridge DLL exposes the same ABI and needs no external ONNX
   Runtime.
 - The shared contract suite passes on all three desktop targets.

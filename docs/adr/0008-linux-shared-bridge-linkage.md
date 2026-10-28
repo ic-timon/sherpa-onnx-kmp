@@ -48,7 +48,9 @@ Linux builds and ships a shared bridge library, matching the Windows model:
 
 ```text
 build/native-desktop/linux-x64/lib/libsherpa-onnx-kmp-native-desktop.so
+build/native-desktop/linux-x64/lib/libonnxruntime.so
 build/native-desktop/linux-arm64/lib/libsherpa-onnx-kmp-native-desktop.so
+build/native-desktop/linux-arm64/lib/libonnxruntime.so
 ```
 
 Configuration:
@@ -56,11 +58,9 @@ Configuration:
 - `BUILD_SHARED_LIBS=ON` and target `sherpa-onnx-portable-bridge`.
 - `SHERPA_ONNX_LINK_LIBSTDCPP_STATICALLY=OFF`, so upstream does not append
   `-static-libstdc++ -static-libgcc` and reintroduce the runtime mixing.
-- ONNX Runtime stays static and is carried inside the `.so`. A dynamic
-  dependency on a separate `libonnxruntime.so` is explicitly rejected in CI.
 - The pinned ONNX Runtime package changed from `static_lib` to the
-  `glibc2_17-Release` shared-ABI build, which is the lowest glibc the project
-  targets.
+  `glibc2_17-Release` shared build, which is the lowest glibc the project
+  targets and the distribution upstream's shared mode expects.
 
 Kotlin/Native links only the bridge C ABI:
 
@@ -72,17 +72,35 @@ Only `SherpaOnnxBridge*` symbols cross the boundary. Every C++ and glibc
 reference is resolved inside the `.so` at runtime from the host's system
 libraries, which is exactly the ABI the library was built against.
 
+### ONNX Runtime is a sibling shared library, not embedded
+
+The first attempt at this ADR kept the static ONNX Runtime archive and tried to
+fold it into the bridge `.so`. That was rejected before shipping: a static
+archive can only be linked into a shared object when every one of its members
+is position-independent, and the pinned archive is a large third-party
+prebuilt whose PIC flags are not part of its published contract. Relying on
+that would be an unverifiable assumption on every ONNX Runtime bump.
+
+Using the shared ONNX Runtime build is upstream's own supported shared-mode
+path and needs no assumption. The cost is one extra file per architecture, and
+CI enforces that the bridge records a `libonnxruntime` `NEEDED` entry so the
+pair can never drift apart.
+
 ## Consequences
 
 - Linux and Windows now share one linkage model: a shared bridge with a plain C
-  ABI and a static ONNX Runtime inside it. Only the file format differs.
+  ABI. Windows embeds ONNX Runtime statically because its DLL links a single
+  import library cleanly; Linux uses the shared ONNX Runtime build and ships it
+  as a sibling, so the two platforms' artifact sets differ by one file.
 - The static archive merge (`merge_linux_archive`, `sherpa_static_archives`)
   is deleted. It encoded an approach that cannot work, and keeping it would
   invite reintroduction.
-- Host applications must ship `libsherpa-onnx-kmp-native-desktop.so` next to
-  the executable or in a sibling `lib/` directory. The rpath entries cover both.
-- CI asserts the exported C ABI, that `OrtGetApiBase` is present inside the
-  library, and that `readelf -d` reports no `libonnxruntime` dependency.
+- Host applications must ship `libsherpa-onnx-kmp-native-desktop.so` and
+  `libonnxruntime.so` next to the executable or in a sibling `lib/` directory.
+  The rpath entries cover both.
+- CI asserts the exported C ABI and that the bridge records a `libonnxruntime`
+  `NEEDED` entry. A missing or renamed runtime fails the build rather than the
+  first inference call.
 - Linux arm64 is still built by cross-compiling with the aarch64 toolchain and
   executed under qemu. Cross-compiling the full dependency graph worked and is
   retained; only the linkage model changed.
@@ -90,3 +108,5 @@ libraries, which is exactly the ABI the library was built against.
   against. The `glibc2_17` ONNX Runtime package keeps the ONNX Runtime side at
   2.17, but the C++ graph is compiled by the build host, so the effective floor
   is the runner's glibc. Packaging documentation must state this.
+- A future Windows follow-up should verify whether the shared ONNX Runtime build
+  can be used there too, removing the last asymmetry.

@@ -67,6 +67,7 @@ jobs:
         run: |
           lib=build/native-desktop/linux-x64/lib/libsherpa-onnx-kmp-native-desktop.so
           test -f "$lib"
+          test -f build/native-desktop/linux-x64/lib/libonnxruntime.so
           # The bridge is a shared library: only its exported C ABI is a
           # link-time dependency for Kotlin/Native. Materialize the symbol names
           # once; piping `nm` into `grep -q` raises SIGPIPE under pipefail.
@@ -83,21 +84,17 @@ jobs:
             grep -Fxq "$symbol" /tmp/exported.txt || {
               echo "Missing exported symbol: $symbol" >&2; exit 1; }
           done
-          # ONNX Runtime must be inside the library. A dynamic dependency on a
-          # separate libonnxruntime.so would require host applications to ship
-          # one more file.
-          if ! nm "$lib" 2>/dev/null | grep -qw OrtGetApiBase; then
-            echo "ONNX Runtime is not linked into the bridge" >&2; exit 1
-          fi
-          if readelf -d "$lib" | grep -qi 'libonnxruntime'; then
-            echo "Bridge dynamically depends on libonnxruntime" >&2; exit 1
-          fi
+          # The ONNX Runtime copy must be pinned to the glibc2_17 build, and the
+          # bridge must reference it by name.
+          readelf -d "$lib" | grep -q 'libonnxruntime' || {
+            echo "Bridge does not link against libonnxruntime" >&2
+            readelf -d "$lib" >&2; exit 1; }
           echo "Runtime dependency inspection: OK"
       - name: Build and test Linux x64 KMP target
         run: |
           # The test executable resolves the bridge through its rpath entries,
           # which point next to the binary and into a sibling `lib/`. Stage the
-          # shared library in both places so either resolution wins.
+          # shared libraries in both places so either resolution wins.
           ./gradlew :sherpa-onnx-kmp:linkDebugTestLinuxX64 --stacktrace
           bin_dir=$(find sherpa-onnx-kmp/build/bin/linuxX64 -type d -name debugTest | head -n 1)
           if [[ -z "$bin_dir" ]]; then
@@ -105,8 +102,10 @@ jobs:
             exit 1
           fi
           mkdir -p "$bin_dir/lib"
-          cp -f build/native-desktop/linux-x64/lib/libsherpa-onnx-kmp-native-desktop.so "$bin_dir/"
-          cp -f build/native-desktop/linux-x64/lib/libsherpa-onnx-kmp-native-desktop.so "$bin_dir/lib/"
+          for so in libsherpa-onnx-kmp-native-desktop.so libonnxruntime.so; do
+            cp -f "build/native-desktop/linux-x64/lib/$so" "$bin_dir/"
+            cp -f "build/native-desktop/linux-x64/lib/$so" "$bin_dir/lib/"
+          done
           ./gradlew :sherpa-onnx-kmp:linuxX64Test --stacktrace
 
   linux-arm64:
@@ -141,6 +140,7 @@ jobs:
         run: |
           lib=build/native-desktop/linux-arm64/lib/libsherpa-onnx-kmp-native-desktop.so
           test -f "$lib"
+          test -f build/native-desktop/linux-arm64/lib/libonnxruntime.so
           file "$lib" | grep -q 'aarch64' || {
             echo "Bridge library is not aarch64" >&2; file "$lib" >&2; exit 1; }
           # Extract just the symbol names. `nm` prefixes a type letter and, for
@@ -159,12 +159,9 @@ jobs:
             grep -Fxq "$symbol" /tmp/exported-arm64.txt || {
               echo "Missing exported symbol: $symbol" >&2; exit 1; }
           done
-          if ! aarch64-linux-gnu-nm "$lib" 2>/dev/null | grep -qw OrtGetApiBase; then
-            echo "ONNX Runtime is not linked into the bridge" >&2; exit 1
-          fi
-          if aarch64-linux-gnu-readelf -d "$lib" | grep -qi 'libonnxruntime'; then
-            echo "Bridge dynamically depends on libonnxruntime" >&2; exit 1
-          fi
+          aarch64-linux-gnu-readelf -d "$lib" | grep -q 'libonnxruntime' || {
+            echo "Bridge does not link against libonnxruntime" >&2
+            aarch64-linux-gnu-readelf -d "$lib" >&2; exit 1; }
           echo "Runtime dependency inspection: OK"
       - name: Link Linux arm64 test binary
         run: >-
@@ -180,9 +177,13 @@ jobs:
           fi
           file "$binary" | grep -q 'aarch64'
           # The test executable resolves the bridge through its rpath, which
-          # points next to the binary, so stage the library there.
-          cp -f build/native-desktop/linux-arm64/lib/libsherpa-onnx-kmp-native-desktop.so \
-            "$(dirname "$binary")/"
+          # points next to the binary, so stage both libraries there.
+          bin_dir=$(dirname "$binary")
+          mkdir -p "$bin_dir/lib"
+          for so in libsherpa-onnx-kmp-native-desktop.so libonnxruntime.so; do
+            cp -f "build/native-desktop/linux-arm64/lib/$so" "$bin_dir/"
+            cp -f "build/native-desktop/linux-arm64/lib/$so" "$bin_dir/lib/"
+          done
           qemu-aarch64-static -L /usr/aarch64-linux-gnu "$binary"
 
   windows-x64:

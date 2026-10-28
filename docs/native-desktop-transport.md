@@ -19,7 +19,7 @@ Kotlin common engine
   -> NativePortableTransport        (nativeMain, shared with Apple)
      -> Kotlin/Native cinterop
      -> Linux: libsherpa-onnx-kmp-native-desktop.so
-        Portable Bridge + sherpa-onnx + static ONNX Runtime inside the .so
+        Portable Bridge + sherpa-onnx, with libonnxruntime.so alongside
      -> Windows: sherpa-onnx-portable-bridge.dll
         Portable Bridge + static ONNX Runtime inside the DLL
 ```
@@ -47,7 +47,9 @@ Outputs:
 
 ```text
 build/native-desktop/linux-x64/lib/libsherpa-onnx-kmp-native-desktop.so
+build/native-desktop/linux-x64/lib/libonnxruntime.so
 build/native-desktop/linux-arm64/lib/libsherpa-onnx-kmp-native-desktop.so
+build/native-desktop/linux-arm64/lib/libonnxruntime.so
 build/native-desktop/windows-x64/lib/sherpa-onnx-portable-bridge.dll
 ```
 
@@ -56,9 +58,10 @@ build/native-desktop/windows-x64/lib/sherpa-onnx-portable-bridge.dll
 Each platform must satisfy:
 
 - The shared library or DLL exports the full `SherpaOnnxBridge*` C ABI.
-- `OrtGetApiBase` is defined inside the artifact, so ONNX Runtime is bundled.
-- Linux: `readelf -d` reports no `libonnxruntime` dependency.
-- Windows: no `onnxruntime.dll` is required next to the bridge DLL.
+- Linux: the bridge records a `libonnxruntime` `NEEDED` entry and the runtime
+  file ships beside it.
+- Windows: `OrtGetApiBase` is defined inside the DLL, and no `onnxruntime.dll`
+  is required next to it.
 
 CI runs these checks in `.github/workflows/platform-native.yml`.
 
@@ -86,9 +89,9 @@ and the shared contract suite still runs.
 
 ## Packaging notes for consumers
 
-- **Linux**: ship `libsherpa-onnx-kmp-native-desktop.so` next to the executable,
-  or in a sibling `lib/` directory. The Kotlin/Native binary sets `$ORIGIN` and
-  `$ORIGIN/lib` rpath entries. No separate ONNX Runtime file is needed. The
+- **Linux**: ship `libsherpa-onnx-kmp-native-desktop.so` and
+  `libonnxruntime.so` next to the executable, or in a sibling `lib/` directory.
+  The Kotlin/Native binary sets `$ORIGIN` and `$ORIGIN/lib` rpath entries. The
   effective glibc floor is the glibc the bridge was compiled against.
 - **Windows**: ship `sherpa-onnx-portable-bridge.dll` next to the executable, or
   in a `lib/` directory reachable through the executable's directory. The
