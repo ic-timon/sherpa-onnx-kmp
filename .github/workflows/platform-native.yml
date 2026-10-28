@@ -66,23 +66,24 @@ jobs:
         run: ./scripts/build-native-desktop.sh linux-x64
       - name: Inspect runtime dependencies
         run: |
-          set -o pipefail
           lib=build/native-desktop/linux-x64/lib/libsherpa-onnx-kmp-native-desktop.a
           test -f "$lib"
-          # Materialize the symbol tables once. Piping a large archive's nm
-          # output straight into `grep -q` raises SIGPIPE and, under pipefail,
-          # fails the step even when the symbol is present.
-          nm -g --defined-only "$lib" > /tmp/defined.txt 2>/dev/null || true
-          nm -g --undefined-only "$lib" > /tmp/undefined.txt 2>/dev/null || true
-          grep -Fxq 'SherpaOnnxBridgeAbiVersion' <(sed 's/.* //' /tmp/defined.txt) || {
+          # Materialize the symbol names once. Piping a large archive's nm output
+          # straight into `grep -q` raises SIGPIPE and, under pipefail, fails the
+          # step even when the symbol is present.
+          nm -g --defined-only "$lib" 2>/dev/null | awk '{print $NF}' > /tmp/defined.txt || true
+          nm -g --undefined-only "$lib" 2>/dev/null | awk '{print $NF}' > /tmp/undefined.txt || true
+          wc -l /tmp/defined.txt /tmp/undefined.txt
+          grep -Fxq 'SherpaOnnxBridgeAbiVersion' /tmp/defined.txt || {
             echo "Missing SherpaOnnxBridgeAbiVersion" >&2; exit 1; }
-          grep -Fxq 'OrtGetApiBase' <(sed 's/.* //' /tmp/defined.txt) || {
+          grep -Fxq 'OrtGetApiBase' /tmp/defined.txt || {
             echo "Missing OrtGetApiBase" >&2; exit 1; }
-          if grep -qE '^ *U +(OrtCreateSession|OrtRun|OrtCreateEnv|OrtReleaseEnv)$' /tmp/undefined.txt; then
-            echo "Undefined ONNX Runtime C entry point:" >&2
-            grep -E '^ *U +(OrtCreateSession|OrtRun|OrtCreateEnv|OrtReleaseEnv)$' /tmp/undefined.txt >&2
-            exit 1
-          fi
+          for entry in OrtCreateSession OrtRun OrtCreateEnv OrtReleaseEnv; do
+            if grep -Fxq "$entry" /tmp/undefined.txt; then
+              echo "Undefined ONNX Runtime C entry point: $entry" >&2
+              exit 1
+            fi
+          done
           echo "Runtime dependency inspection: OK"
       - name: Build and test Linux x64 KMP target
         run: ./gradlew :sherpa-onnx-kmp:linuxX64Test --stacktrace
@@ -118,21 +119,26 @@ jobs:
         run: ./scripts/build-native-desktop.sh linux-arm64
       - name: Inspect runtime dependencies
         run: |
-          set -o pipefail
           lib=build/native-desktop/linux-arm64/lib/libsherpa-onnx-kmp-native-desktop.a
           test -f "$lib"
           file "$lib" | grep -q 'aarch64'
-          aarch64-linux-gnu-nm -g --defined-only "$lib" > /tmp/defined-arm64.txt 2>/dev/null || true
-          aarch64-linux-gnu-nm -g --undefined-only "$lib" > /tmp/undefined-arm64.txt 2>/dev/null || true
-          grep -Fxq 'SherpaOnnxBridgeAbiVersion' <(sed 's/.* //' /tmp/defined-arm64.txt) || {
+          # Extract just the symbol names. `nm` prefixes a type letter and, for
+          # defined symbols, an address, so the last field is the name.
+          aarch64-linux-gnu-nm -g --defined-only "$lib" 2>/dev/null \
+            | awk '{print $NF}' > /tmp/defined-arm64.txt || true
+          aarch64-linux-gnu-nm -g --undefined-only "$lib" 2>/dev/null \
+            | awk '{print $NF}' > /tmp/undefined-arm64.txt || true
+          wc -l /tmp/defined-arm64.txt /tmp/undefined-arm64.txt
+          grep -Fxq 'SherpaOnnxBridgeAbiVersion' /tmp/defined-arm64.txt || {
             echo "Missing SherpaOnnxBridgeAbiVersion" >&2; exit 1; }
-          grep -Fxq 'OrtGetApiBase' <(sed 's/.* //' /tmp/defined-arm64.txt) || {
+          grep -Fxq 'OrtGetApiBase' /tmp/defined-arm64.txt || {
             echo "Missing OrtGetApiBase" >&2; exit 1; }
-          if grep -qE '^ *U +(OrtCreateSession|OrtRun|OrtCreateEnv|OrtReleaseEnv)$' /tmp/undefined-arm64.txt; then
-            echo "Undefined ONNX Runtime C entry point:" >&2
-            grep -E '^ *U +(OrtCreateSession|OrtRun|OrtCreateEnv|OrtReleaseEnv)$' /tmp/undefined-arm64.txt >&2
-            exit 1
-          fi
+          for entry in OrtCreateSession OrtRun OrtCreateEnv OrtReleaseEnv; do
+            if grep -Fxq "$entry" /tmp/undefined-arm64.txt; then
+              echo "Undefined ONNX Runtime C entry point: $entry" >&2
+              exit 1
+            fi
+          done
           echo "Runtime dependency inspection: OK"
       - name: Link Linux arm64 test binary
         run: >-
@@ -151,12 +157,12 @@ jobs:
 
   windows-x64:
     runs-on: windows-2022
-    timeout-minutes: 90
+    timeout-minutes: 120
     env:
       GH_TOKEN: ${{ github.token }}
     defaults:
       run:
-        shell: msys2 {0}
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -164,42 +170,51 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-ninja
-            git
-            unzip
-            tar
-            patch
-            diffutils
+      - name: Verify MSVC toolchain
+        run: |
+          cmake --version
+          cmake -G "Visual Studio 17 2022" -A x64 -S native -B build/toolchain-probe \
+            -DSHERPA_ONNX_KMP_BUILD_JNI=OFF \
+            -DSHERPA_ONNX_KMP_BUILD_TESTS=OFF 2>&1 | tail -5 || true
+          ls build/toolchain-probe | head
       - name: Cache native desktop dependencies
         uses: actions/cache@v4
         with:
           path: |
-            C:\msys64\home\runneradmin\.cache\sherpa-onnx-kmp
-            build\native-desktop
-            build\upstream
-          key: desktop-windows-x64-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch', 'native/**', 'sherpa-onnx-kmp/build.gradle.kts') }}
-      - name: Configure git for symlinked upstream sources
-        run: git config --global core.symlinks false
+            ~/.cache/sherpa-onnx-kmp
+            build/native-desktop
+            build/upstream
+          key: desktop-windows-x64-msvc-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch', 'native/**', 'sherpa-onnx-kmp/build.gradle.kts') }}
       - name: Build native desktop libraries
+        shell: bash
         run: ./scripts/build-native-desktop.sh windows-x64
       - name: Inspect runtime dependencies
+        shell: bash
         run: |
           dll=build/native-desktop/windows-x64/lib/sherpa-onnx-portable-bridge.dll
           test -f "$dll"
-          defined=$(nm -g --defined-only "$dll" 2>/dev/null)
-          echo "$defined" | grep -q 'SherpaOnnxBridgeAbiVersion'
-          echo "$defined" | grep -q 'OrtGetApiBase'
-          if find build/native-desktop/windows-x64 -maxdepth 2 -iname 'onnxruntime.dll' | grep -q .; then
+          # `nm` on PE files shows the symbol table of the DLL, which is not the
+          # export table. Use dumpbin, the SDK tool that understands PE exports.
+          dumpbin //nologo //exports "$dll" > /tmp/exports.txt
+          grep -q 'SherpaOnnxBridgeAbiVersion' /tmp/exports.txt || {
+            echo "DLL does not export SherpaOnnxBridgeAbiVersion" >&2; exit 1; }
+          grep -q 'SherpaOnnxBridgeInfoJson' /tmp/exports.txt || {
+            echo "DLL does not export SherpaOnnxBridgeInfoJson" >&2; exit 1; }
+          grep -q 'SherpaOnnxBridgeCreate' /tmp/exports.txt || {
+            echo "DLL does not export SherpaOnnxBridgeCreate" >&2; exit 1; }
+          grep -q 'SherpaOnnxBridgeCall' /tmp/exports.txt || {
+            echo "DLL does not export SherpaOnnxBridgeCall" >&2; exit 1; }
+          grep -q 'SherpaOnnxBridgePushAudio' /tmp/exports.txt || {
+            echo "DLL does not export SherpaOnnxBridgePushAudio" >&2; exit 1; }
+          grep -q 'SherpaOnnxBridgeDestroy' /tmp/exports.txt || {
+            echo "DLL does not export SherpaOnnxBridgeDestroy" >&2; exit 1; }
+          grep -q 'SherpaOnnxBridgeFree' /tmp/exports.txt || {
+            echo "DLL does not export SherpaOnnxBridgeFree" >&2; exit 1; }
+          if find build/native-desktop/windows-x64 -iname 'onnxruntime.dll' | grep -q .; then
             echo "A separate ONNX Runtime DLL was produced; ORT must be static" >&2
             exit 1
           fi
           echo "Runtime dependency inspection: OK"
       - name: Build and test Windows x64 KMP target
+        shell: bash
         run: ./gradlew :sherpa-onnx-kmp:mingwX64Test --stacktrace

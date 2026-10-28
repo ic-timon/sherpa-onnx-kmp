@@ -184,7 +184,10 @@ kotlin {
         target = mingwX64Target,
         nativeDirectory = "windows-x64",
         sharedLibraries = true,
-        linkerOptions = listOf("-lsherpa-onnx-portable-bridge", "-lstdc++"),
+        linkerOptions = listOf(
+            "-lsherpa-onnx-portable-bridge",
+            "-lstdc++",
+        ),
     )
 
     fun KotlinNativeTarget.configureAppleFramework(konanTarget: String? = null) {

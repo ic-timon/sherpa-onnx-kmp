@@ -1,0 +1,136 @@
+name: web
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/web.yml'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'native/**'
+      - 'patches/**'
+      - 'scripts/**'
+      - 'samples/web/**'
+      - 'sherpa-onnx-kmp/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/web.yml'
+      - 'native/**'
+      - 'scripts/**'
+      - 'samples/web/**'
+      - 'sherpa-onnx-kmp/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  emscripten:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build build-essential
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 4.0.11
+          actions-cache-folder: emsdk-cache
+      - name: Verify Emscripten
+        run: emcc --version
+      - name: Cache native dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/sherpa-onnx-kmp
+            build/upstream
+            build/web-emscripten
+          key: web-emscripten-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch', 'native/**') }}
+      - name: Build the Emscripten bridge
+        run: ./scripts/build-web-emscripten.sh
+      - name: Inspect the Wasm bridge module
+        run: |
+          js=build/web/sherpa-onnx-bridge.js
+          wasm=build/web/sherpa-onnx-bridge.wasm
+          test -f "$js"
+          test -f "$wasm"
+          wasm-objdump -x "$wasm" > /tmp/wasm-exports.txt 2>/dev/null || \
+            (echo "wasm-objdump is required for export inspection" >&2; exit 1)
+          for symbol in \
+            SherpaOnnxBridgeAbiVersion \
+            SherpaOnnxBridgeInfoJson \
+            SherpaOnnxBridgeCreate \
+            SherpaOnnxBridgeCall \
+            SherpaOnnxBridgePushAudio \
+            SherpaOnnxBridgeDestroy \
+            SherpaOnnxBridgeFree; do
+            grep -q "$symbol" /tmp/wasm-exports.txt || {
+              echo "Wasm module does not export $symbol" >&2
+              exit 1
+            }
+          done
+          echo "Wasm export inspection: OK"
+      - name: Upload web artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-bridge
+          path: |
+            build/web/sherpa-onnx-bridge.js
+            build/web/sherpa-onnx-bridge.wasm
+          retention-days: 30
+      - name: Build the Kotlin/JS sample bundle
+        env:
+          YARN_REGISTRY: https://registry.npmjs.org
+        run: ./gradlew :samples:web:jsBrowserProductionLibraryDistribution --stacktrace
+      - name: Assemble the deployable sample
+        run: |
+          dist=samples/web/dist
+          mkdir -p "$dist"
+          cp -f build/web/sherpa-onnx-bridge.js build/web/sherpa-onnx-bridge.wasm "$dist/"
+          cp -f samples/web/sherpa-onnx-worker.js samples/web/index.html "$dist/"
+          bundle=$(find samples/web/build/dist/js/productionLibrary -name "*.mjs" | head -n 1)
+          if [[ -z "$bundle" ]]; then
+            echo "Kotlin/JS production bundle was not produced" >&2
+            exit 1
+          fi
+          cp -f "$bundle" "$dist/sherpa-onnx-kmp.mjs"
+          ls -la "$dist"
+      - name: Upload the deployable sample
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-sample
+          path: samples/web/dist
+          retention-days: 30
+
+  browser-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: emscripten
+    env:
+      YARN_REGISTRY: https://registry.npmjs.org
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Download web artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: web-bridge
+          path: build/web
+      - name: Run Kotlin/JS browser tests
+        run: ./gradlew :sherpa-onnx-kmp:jsBrowserTest --stacktrace

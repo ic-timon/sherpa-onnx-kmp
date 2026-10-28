@@ -167,31 +167,40 @@ build_windows_x64() {
   # Windows links the bridge as a shared library. ONNX Runtime is static, so the
   # bridge carries ORT internally and only the bridge DLL ships next to the app.
   #
-  # `SBPE_COMPILER_SUPPORTS_CXX14=TRUE` bypasses an upstream CMake check in
-  # simple-sentencepiece that probes the MSVC-only `/std:c++14` flag on WIN32.
-  # MinGW's g++ rejects that flag even though it supports C++14 and C++17, so
-  # the probe fails and configuration aborts. The check is a build-time guard,
-  # not a behavioral switch, so pre-seeding the result is safe here.
-  cmake -S native -B "$build_dir" -G Ninja \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_SHARED_LIBS=ON \
+  # The toolchain must be MSVC: sherpa-onnx injects MSVC-only flags (/wd4018,
+  # /bigobj, ...) on WIN32 unconditionally, so a MinGW g++ build fails at the
+  # first compile. See ADR 0007.
+  local generator="Visual Studio 17 2022"
+  local arch_flag=(-A x64)
+  if ! command -v cmake >/dev/null 2>&1; then
+    echo "cmake is required" >&2
+    return 1
+  fi
+  # `-G` with the VS generator writes a multi-config build tree.
+  cmake -S native -B "$build_dir" -G "$generator" "${arch_flag[@]}" \
     -DCMAKE_CXX_STANDARD=17 \
     -DSHERPA_ONNX_SOURCE_DIR="$source_dir" \
     -DSHERPA_ONNX_KMP_BUILD_JNI=OFF \
     -DSHERPA_ONNX_KMP_BUILD_TESTS=OFF \
-    -DSHERPA_ONNX_USE_PRE_INSTALLED_ONNXRUNTIME_IF_AVAILABLE=ON \
-    -DSBPE_COMPILER_SUPPORTS_CXX14=TRUE
-  cmake --build "$build_dir" -j "$jobs" \
+    -DSHERPA_ONNX_USE_PRE_INSTALLED_ONNXRUNTIME_IF_AVAILABLE=ON
+  cmake --build "$build_dir" --config Release -j "$jobs" \
     --target sherpa-onnx-portable-bridge
 
   local dll
-  dll=$(find "$build_dir" -maxdepth 2 -name "sherpa-onnx-portable-bridge.dll" | head -n 1)
+  dll=$(find "$build_dir" -name "sherpa-onnx-portable-bridge.dll" | head -n 1)
   if [[ -z "$dll" ]]; then
     echo "Bridge DLL was not produced" >&2
     return 1
   fi
   mkdir -p "$build_dir/lib"
   cp -f "$dll" "$build_dir/lib/"
+  # Kotlin/Native links against the import library that MSVC emits next to the
+  # DLL.
+  local implib
+  implib=$(find "$build_dir" -name "sherpa-onnx-portable-bridge.lib" | head -n 1)
+  if [[ -n "$implib" ]]; then
+    cp -f "$implib" "$build_dir/lib/"
+  fi
   printf 'Windows bridge: %s\n' "$build_dir/lib/sherpa-onnx-portable-bridge.dll"
 }
 
