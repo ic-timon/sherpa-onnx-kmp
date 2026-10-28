@@ -52,40 +52,58 @@ merge_linux_archive() {
   local onnxruntime_archive=$2
   local output="$build_dir/lib/libsherpa-onnx-kmp-native-desktop.a"
 
-  # Merge with one extraction directory per source archive.
+  # Build the aggregate with an `ar` MRI script.
   #
-  # A single shared extraction directory loses objects: ONNX Runtime and
-  # sherpa-onnx both contain generic member names, so `ar x` overwrites them and
-  # the overwritten symbols vanish from the aggregate. Extracting per archive
-  # and appending with `ar q` keeps every member; duplicate member names are
-  # legal in a Unix archive and the linker's symbol index still resolves them.
-  local work
-  work=$(mktemp -d)
+  # `ar x` plus `ar rcs` is unsafe here: ONNX Runtime and sherpa-onnx both ship
+  # generic member names, so extracting into one directory overwrites objects and
+  # their symbols vanish. MRI `addlib` merges at the archive level, keeps every
+  # member, and rebuilds the symbol index, which is what the linker needs for a
+  # static C++ graph.
+  local mri
+  mri=$(mktemp)
+  {
+    printf 'create %s\n' "$output"
+    for archive in $(sherpa_static_archives "$build_dir") "$onnxruntime_archive"; do
+      printf 'addlib %s\n' "$archive"
+    done
+    printf 'save\nend\n'
+  } > "$mri"
+
   rm -f "$output"
-  local index=0
-  for archive in $(sherpa_static_archives "$build_dir") "$onnxruntime_archive"; do
-    index=$((index + 1))
-    local dir="$work/$index"
-    mkdir -p "$dir"
-    (
-      cd "$dir" || exit 1
-      ar x "$archive" || exit 1
-      # `ar q` appends without replacing same-named members.
-      ar q "$output" ./*.o || exit 1
-    )
-  done
-  ranlib "$output"
-  rm -rf "$work"
+  if ! ar -M < "$mri" 2>"$build_dir/ar-merge.log"; then
+    echo "ar MRI merge failed:" >&2
+    cat "$build_dir/ar-merge.log" >&2
+    rm -f "$mri"
+    return 1
+  fi
+  rm -f "$mri"
 
   if [[ ! -s "$output" ]]; then
     echo "Failed to create the aggregate archive: $output" >&2
     return 1
   fi
+  ranlib "$output" || true
 
   nm -g --defined-only "$output" > "$build_dir/native-symbols.txt" 2>/dev/null || true
-  grep -q 'SherpaOnnxBridgeAbiVersion' "$build_dir/native-symbols.txt"
-  grep -q 'OrtGetApiBase' "$build_dir/native-symbols.txt"
-  printf 'Linux aggregate: %s (%s bytes)\n' "$output" "$(stat -c%s "$output")"
+  local member_count
+  member_count=$(ar t "$output" | wc -l)
+  printf 'Linux aggregate: %s (%s bytes, %s members)\n' \
+    "$output" "$(stat -c%s "$output")" "$member_count"
+
+  # A merged archive must contain far more members than the bridge alone; a
+  # small count means the ORT archive was not folded in.
+  if [[ "$member_count" -lt 100 ]]; then
+    echo "Aggregate archive looks truncated: only $member_count members" >&2
+    return 1
+  fi
+  if ! grep -q 'SherpaOnnxBridgeAbiVersion' "$build_dir/native-symbols.txt"; then
+    echo "Aggregate is missing SherpaOnnxBridgeAbiVersion" >&2
+    return 1
+  fi
+  if ! grep -q 'OrtGetApiBase' "$build_dir/native-symbols.txt"; then
+    echo "Aggregate is missing OrtGetApiBase" >&2
+    return 1
+  fi
 }
 
 build_linux_x64() {

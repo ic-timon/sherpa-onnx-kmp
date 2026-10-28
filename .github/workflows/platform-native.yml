@@ -121,7 +121,17 @@ jobs:
         run: |
           lib=build/native-desktop/linux-arm64/lib/libsherpa-onnx-kmp-native-desktop.a
           test -f "$lib"
-          file "$lib" | grep -q 'aarch64'
+          # An `ar` archive reports as "current ar archive", not as an arch, so
+          # the architecture check inspects a member object instead.
+          member=$(ar t "$lib" | head -n 1)
+          tmpdir=$(mktemp -d)
+          (cd "$tmpdir" && ar x "$lib" "$member")
+          file "$tmpdir/$member" | grep -q 'aarch64' || {
+            echo "Aggregate archive members are not aarch64" >&2
+            file "$tmpdir/$member" >&2
+            exit 1
+          }
+          rm -rf "$tmpdir"
           # Extract just the symbol names. `nm` prefixes a type letter and, for
           # defined symbols, an address, so the last field is the name.
           aarch64-linux-gnu-nm -g --defined-only "$lib" 2>/dev/null \
@@ -192,24 +202,24 @@ jobs:
         shell: bash
         run: |
           dll=build/native-desktop/windows-x64/lib/sherpa-onnx-portable-bridge.dll
+          implib=build/native-desktop/windows-x64/lib/sherpa-onnx-portable-bridge.lib
           test -f "$dll"
-          # `nm` on PE files shows the symbol table of the DLL, which is not the
-          # export table. Use dumpbin, the SDK tool that understands PE exports.
-          dumpbin //nologo //exports "$dll" > /tmp/exports.txt
-          grep -q 'SherpaOnnxBridgeAbiVersion' /tmp/exports.txt || {
-            echo "DLL does not export SherpaOnnxBridgeAbiVersion" >&2; exit 1; }
-          grep -q 'SherpaOnnxBridgeInfoJson' /tmp/exports.txt || {
-            echo "DLL does not export SherpaOnnxBridgeInfoJson" >&2; exit 1; }
-          grep -q 'SherpaOnnxBridgeCreate' /tmp/exports.txt || {
-            echo "DLL does not export SherpaOnnxBridgeCreate" >&2; exit 1; }
-          grep -q 'SherpaOnnxBridgeCall' /tmp/exports.txt || {
-            echo "DLL does not export SherpaOnnxBridgeCall" >&2; exit 1; }
-          grep -q 'SherpaOnnxBridgePushAudio' /tmp/exports.txt || {
-            echo "DLL does not export SherpaOnnxBridgePushAudio" >&2; exit 1; }
-          grep -q 'SherpaOnnxBridgeDestroy' /tmp/exports.txt || {
-            echo "DLL does not export SherpaOnnxBridgeDestroy" >&2; exit 1; }
-          grep -q 'SherpaOnnxBridgeFree' /tmp/exports.txt || {
-            echo "DLL does not export SherpaOnnxBridgeFree" >&2; exit 1; }
+          test -f "$implib"
+          # `nm` from the MSYS2/Git Bash toolchain on the runner understands PE
+          # COFF import libraries, so the export check uses the import library
+          # instead of `dumpbin`, which is only on PATH inside a VS dev shell.
+          nm -g --defined-only "$implib" > /tmp/implib-symbols.txt
+          for symbol in \
+            SherpaOnnxBridgeAbiVersion \
+            SherpaOnnxBridgeInfoJson \
+            SherpaOnnxBridgeCreate \
+            SherpaOnnxBridgeCall \
+            SherpaOnnxBridgePushAudio \
+            SherpaOnnxBridgeDestroy \
+            SherpaOnnxBridgeFree; do
+            grep -q "$symbol" /tmp/implib-symbols.txt || {
+              echo "Import library is missing $symbol" >&2; exit 1; }
+          done
           if find build/native-desktop/windows-x64 -iname 'onnxruntime.dll' | grep -q .; then
             echo "A separate ONNX Runtime DLL was produced; ORT must be static" >&2
             exit 1
