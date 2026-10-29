@@ -122,14 +122,20 @@ inspect_linux_shared_library() {
   # `libonnxruntime.so` lives in the extracted ONNX Runtime package, not in the
   # CMake build tree. Copy it beside the bridge so the pair ships together and
   # the rpath lookup next to the executable resolves it.
+  #
+  # The search must skip the destination: on a rerun the copy from a previous
+  # run is itself the first match, and `cp` then fails with "are the same file".
   local runtime
-  runtime=$(find "$desktop_root" -name "libonnxruntime.so" | head -n 1)
+  runtime=$(find "$desktop_root" -name "libonnxruntime.so" \
+    -not -path "$build_dir/lib/libonnxruntime.so" | head -n 1)
   if [[ -z "$runtime" ]]; then
     echo "libonnxruntime.so was not found under $desktop_root" >&2
     return 1
   fi
   mkdir -p "$build_dir/lib"
-  cp -f "$runtime" "$build_dir/lib/libonnxruntime.so"
+  if [[ "$runtime" != "$build_dir/lib/libonnxruntime.so" ]]; then
+    cp -f "$runtime" "$build_dir/lib/libonnxruntime.so"
+  fi
 
   printf 'Linux shared library: %s (%s bytes)\n' \
     "$library" "$(stat -c%s "$library")"
