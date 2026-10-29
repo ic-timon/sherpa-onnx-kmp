@@ -125,6 +125,16 @@ jobs:
           done
           ./gradlew :sherpa-onnx-kmp:linuxX64Test --stacktrace
   linux-arm64:
+    # qemu is the only way to execute this target. A native arm64 runner looks
+    # like the obvious alternative and does not work: Kotlin/Native does not
+    # support linux-aarch64 as a build host, so on `ubuntu-24.04-arm` the
+    # `compileTestKotlinLinuxArm64` and `linkDebugTestLinuxArm64` tasks are
+    # silently SKIPPED and the job fails at "test binary was not produced".
+    # Kotlin's supported hosts are Linux x86_64, Windows x86_64, and macOS.
+    #
+    # The cost is that the suite takes about an hour and currently fails three
+    # of the eight feature cases with empty transcripts, a missed keyword, and a
+    # diarization timeout, while the same code passes natively elsewhere.
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
