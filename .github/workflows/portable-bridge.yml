@@ -41,14 +41,27 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Cache native dependencies and build
+      # The CMake cache records the absolute path of jni.h, which moves
+      # whenever the Temurin build changes. Hashing the installed JDK identity
+      # keeps `build/native` from being restored across a JDK change, while the
+      # expensive dependency downloads stay keyed only on their inputs.
+      - name: Identify the JDK
+        id: jdk
+        run: |
+          identity=$(java -XshowSettings:properties -version 2>&1 | shasum -a 256 | cut -d' ' -f1)
+          echo "identity=$identity" >> "$GITHUB_OUTPUT"
+      - name: Cache native dependencies
         uses: actions/cache@v4
         with:
           path: |
             ~/.cache/sherpa-onnx-kmp
-            build/native
             build/upstream
-          key: portable-bridge-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch') }}
+          key: portable-bridge-deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch') }}
+      - name: Cache portable bridge build
+        uses: actions/cache@v4
+        with:
+          path: build/native
+          key: portable-bridge-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.jdk.outputs.identity }}-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch') }}
       - name: Fetch pinned native dependencies
         run: ./scripts/fetch-native-deps.sh
       - name: Bootstrap patched sherpa-onnx source

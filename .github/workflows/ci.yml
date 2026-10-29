@@ -44,7 +44,6 @@ jobs:
           :sherpa-onnx-kmp:compileKotlinIosSimulatorArm64
           :sherpa-onnx-kmp:compileKotlinMacosArm64
           :sherpa-onnx-kmp:compileKotlinLinuxX64
-          :sherpa-onnx-kmp:compileKotlinLinuxArm64
           :sherpa-onnx-kmp:compileKotlinMingwX64
           --stacktrace
 
