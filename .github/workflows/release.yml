@@ -262,44 +262,6 @@ jobs:
           path: build/release/${{ needs.resolve-version.outputs.version }}/sherpa-onnx-kmp-linux-x64-*.zip
           if-no-files-found: error
 
-  linux-arm64:
-    needs: resolve-version
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 150
-    env:
-      RELEASE_VERSION: ${{ needs.resolve-version.outputs.version }}
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Install native prerequisites
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build build-essential zip
-          cmake --version
-          ninja --version
-      - name: Cache native desktop dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/sherpa-onnx-kmp
-            build/upstream
-          key: release-linux-arm64-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/*.patch', 'native/**') }}
-      - name: Build the Linux arm64 libraries
-        run: ./scripts/build-native-desktop.sh linux-arm64
-      - name: Package the Linux arm64 slice
-        run: ./scripts/package-release-desktop.sh linux-arm64 "$RELEASE_VERSION"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release-linux-arm64
-          path: build/release/${{ needs.resolve-version.outputs.version }}/sherpa-onnx-kmp-linux-arm64-*.zip
-          if-no-files-found: error
-
   windows-x64:
     needs: resolve-version
     runs-on: windows-2022
@@ -399,7 +361,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: [resolve-version, jvm-android, jvm-native, apple, linux-x64, linux-arm64, windows-x64, web]
+    needs: [resolve-version, jvm-android, jvm-native, apple, linux-x64, windows-x64, web]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

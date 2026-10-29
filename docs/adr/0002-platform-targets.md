@@ -1,6 +1,6 @@
 # 0002: Platform Target Boundaries
 
-Status: Accepted
+Status: Accepted; the `linuxArm64` entry is superseded by ADR 0009
 
 Date: 2026-10-27
 

@@ -206,14 +206,19 @@ build_linux_x64() {
   inspect_linux_shared_library "$build_dir"
 }
 
+# Builds the aarch64 native desktop libraries for the JNI slice only.
+#
+# ADR 0009 removed the linuxArm64 Kotlin/Native target, so nothing links these
+# into a Kotlin/Native binary any more. The JNI JAR still needs them: it is a
+# plain CMake build with no Kotlin/Native involvement, so an arm64 runner can
+# build and link it natively.
 build_linux_arm64() {
   if [[ "$host_os" != "Linux" ]]; then
     echo "linux-arm64 must be built on Linux (host is $host_os)" >&2
     return 1
   fi
-  # Kotlin/Native only supports x86_64 Linux as a compiler host, so the
-  # aarch64 library is cross-compiled from x64 and tested under qemu. A native
-  # aarch64 host is accepted too, in which case the default compiler is used.
+  # The aarch64 library is cross-compiled from x64 or built natively on an
+  # arm64 host, in which case the default compiler is used.
   local ort_archive="$deps_root/onnxruntime-linux-aarch64-glibc2_17-Release-1.28.2.zip"
   local ort_root="$desktop_root/onnxruntime-linux-arm64"
   extract_zip_once "$ort_archive" "$ort_root"

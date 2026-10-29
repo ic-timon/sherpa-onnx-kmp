@@ -1,6 +1,7 @@
 # 0007: Native Desktop Linking and Packaging
 
-Status: Superseded by ADR 0008 for the Linux decision; the Windows decision stands
+Status: Superseded by ADR 0008 for the Linux decision; the `linuxArm64` bullet is
+superseded by ADR 0009; the Windows decision stands
 
 Date: 2026-10-28
 

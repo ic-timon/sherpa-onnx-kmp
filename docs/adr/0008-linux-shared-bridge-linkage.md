@@ -1,6 +1,7 @@
 # 0008: Linux Ships a Shared Bridge Library
 
-Status: Accepted
+Status: Accepted; the `linuxArm64` cross-compile consequence is superseded by
+ADR 0009
 
 Date: 2026-10-28
 

@@ -56,13 +56,20 @@ library reports from `SherpaOnnxBridgeInfoJson()` at runtime.
 
 ### Linux
 
-- KMP targets: `linuxX64`, `linuxArm64`
+- KMP target: `linuxX64`
 - Transport: Native cinterop
-- Distribution: one shared bridge library per architecture
+- Distribution: one shared bridge library
   (`libsherpa-onnx-kmp-native-desktop.so` and its `SONAME` copy
   `libsherpa-onnx-portable-bridge.so`, plus `libonnxruntime.so`)
 - Providers: CPU
-- `linuxArm64` cross-compiles on x86_64 and is tested under qemu
+- `linuxArm64` is not a Kotlin/Native target. Kotlin/Native has no linux-aarch64
+  build host, so the slice could only be executed under qemu, where three of the
+  eight feature suites fail. Removed in 2.0.0; see
+  [ADR 0009](adr/0009-drop-linux-arm64.md).
+- The JNI slice still ships `sherpa-onnx-kmp-jvm-native-linux-aarch64-*.jar`.
+  It is a plain CMake build with no Kotlin/Native involvement, so an arm64
+  runner builds and links it natively. It is build-verified, not
+  runtime-verified.
 
 ### Windows
 

@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "com.k2fsa.sherpa.onnx"
-version = "1.0.0"
+version = "2.0.0"
 
 val appleTestModelDir = providers.environmentVariable("SHERPA_ONNX_KMP_TEST_MODEL_DIR")
     .orNull
@@ -120,7 +120,6 @@ kotlin {
     val iosSimulatorArm64Target = iosSimulatorArm64()
     val macosArm64Target = macosArm64()
     val linuxX64Target = linuxX64()
-    val linuxArm64Target = linuxArm64()
     val mingwX64Target = mingwX64()
 
     applyDefaultHierarchyTemplate()
@@ -190,15 +189,11 @@ kotlin {
             "-lsherpa-onnx-kmp-native-desktop",
         ),
     )
-    configureNativeDesktopInterop(
-        target = linuxArm64Target,
-        nativeDirectory = "linux-arm64",
-        linkerOptions = listOf(
-            "-Wl,-rpath,\$ORIGIN",
-            "-Wl,-rpath,\$ORIGIN/lib",
-            "-lsherpa-onnx-kmp-native-desktop",
-        ),
-    )
+    // linuxArm64 is deliberately absent. Kotlin/Native has no linux-aarch64
+    // build host, so the target can only ever be executed under qemu, and there
+    // it fails three of the eight feature suites while the same code passes
+    // natively on Linux x64. Publishing a slice that cannot be tested is worse
+    // than not publishing it.
     // Windows links the bridge DLL through its import library. The bridge is a
     // plain C ABI, so the Kotlin/Native binary must not pull in the MinGW C++
     // runtime: `-lstdc++` would make the test executable depend on
@@ -300,7 +295,6 @@ tasks.named("compileTestKotlinIosSimulatorArm64") { dependsOn(generateAppleTestC
 tasks.named("compileTestKotlinMacosArm64") { dependsOn(generateAppleTestConfig) }
 
 tasks.named("compileTestKotlinLinuxX64") { dependsOn(generateNativeDesktopTestConfig) }
-tasks.named("compileTestKotlinLinuxArm64") { dependsOn(generateNativeDesktopTestConfig) }
 tasks.named("compileTestKotlinMingwX64") { dependsOn(generateNativeDesktopTestConfig) }
 publishing {
     repositories {

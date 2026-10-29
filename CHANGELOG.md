@@ -4,6 +4,44 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-29
+
+### Removed
+
+- `linuxArm64` is no longer a Kotlin/Native target, and
+  `sherpa-onnx-kmp-linux-arm64-*.zip` is no longer published. Kotlin/Native has
+  no linux-aarch64 build host, so the slice could only be executed under
+  `qemu-aarch64-static`, and there three of the eight real-model feature suites
+  fail: streaming ASR produces no text, keyword spotting detects nothing, and
+  speaker diarization exceeds the test timeout. Shipping an artifact whose
+  correctness could not be established is worse than shipping none. See
+  [ADR 0009](docs/adr/0009-drop-linux-arm64.md).
+
+  Consumers on Linux arm64 who used the Kotlin/Native transport must move to the
+  JVM/Android path or stay on 1.0.0. This is why the release is a major bump.
+
+- The JNI slice `sherpa-onnx-kmp-jvm-native-linux-aarch64-*.jar` is **kept**. It
+  is a plain CMake build that does not involve Kotlin/Native, so it continues to
+  build natively on an arm64 runner. It is build-verified and, as before,
+  runtime-unverified.
+
+### Changed
+
+- Speech enhancement (`denoise`) now throws `SherpaOnnxException` when the
+  bridge reports success but returns no audio, instead of returning an empty
+  buffer. An empty buffer was indistinguishable from correctly denoised silence
+  in every duration-based check.
+- The Android emulator suite runs on x86_64 only. `ubuntu-24.04-arm` has no
+  `/dev/kvm`, so an arm64 emulator cannot boot on a hosted runner; the
+  `arm64-v8a` slice stays compile-and-symbol-checked.
+
+### Fixed
+
+- Documented platform coverage now matches what the suites actually prove. The
+  1.0.0 notes claimed eight verified real-model features on every desktop while
+  the shared native suite covered six, and claimed an arm64 Android emulator job
+  that did not exist.
+
 ## [1.0.0] - 2026-10-29
 
 The first stable release. The public Kotlin API, the Portable Bridge ABI, and

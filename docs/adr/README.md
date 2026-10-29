@@ -18,3 +18,4 @@ Records:
 - [0006](0006-apple-distribution.md): Self-contained Apple XCFramework
 - [0007](0007-native-desktop-linkage.md): Native desktop linking and packaging
 - [0008](0008-linux-shared-bridge-linkage.md): Linux ships a shared bridge library
+- [0009](0009-drop-linux-arm64.md): Drop the `linuxArm64` Kotlin/Native target

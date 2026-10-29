@@ -1,16 +1,20 @@
 # Native Desktop Transport
 
-Status: v0.5.0
+Status: 2.0.0
 
 ## Targets
 
 - `linuxX64`
-- `linuxArm64`
 - `mingwX64` (Windows x64)
 
-All three share the Kotlin/Native cinterop transport introduced for Apple. There
-is no desktop-specific feature code: `NativePortableTransport` in `nativeMain`
-is the only transport implementation for every Kotlin/Native target.
+`linuxArm64` was removed in 2.0.0. Kotlin/Native has no linux-aarch64 build host,
+so the target could only be executed under qemu, where three of eight feature
+suites fail. See [ADR 0009](adr/0009-drop-linux-arm64.md). The JNI
+`linux-aarch64` JAR is unaffected: it does not use Kotlin/Native.
+
+Both remaining targets share the Kotlin/Native cinterop transport introduced for
+Apple. There is no desktop-specific feature code: `NativePortableTransport` in
+`nativeMain` is the only transport implementation for every Kotlin/Native target.
 
 ## Native pipeline
 
@@ -36,11 +40,11 @@ runtime and the matching ONNX Runtime distribution.
 # On Linux x64
 ./scripts/build-native-desktop.sh linux-x64
 
-# On Linux arm64 (requires an aarch64 host)
-./scripts/build-native-desktop.sh linux-arm64
-
 # On Windows with MSYS2 MINGW64 in PATH
 ./scripts/build-native-desktop.sh windows-x64
+
+# aarch64 libraries, for the JNI JAR only (not a Kotlin/Native target)
+./scripts/build-native-desktop.sh linux-arm64
 ```
 
 Outputs:
@@ -49,11 +53,12 @@ Outputs:
 build/native-desktop/linux-x64/lib/libsherpa-onnx-kmp-native-desktop.so
 build/native-desktop/linux-x64/lib/libsherpa-onnx-portable-bridge.so
 build/native-desktop/linux-x64/lib/libonnxruntime.so
-build/native-desktop/linux-arm64/lib/libsherpa-onnx-kmp-native-desktop.so
-build/native-desktop/linux-arm64/lib/libsherpa-onnx-portable-bridge.so
-build/native-desktop/linux-arm64/lib/libonnxruntime.so
 build/native-desktop/windows-x64/lib/sherpa-onnx-portable-bridge.dll
 ```
+
+`linux-arm64` produces the same three `.so` files under
+`build/native-desktop/linux-arm64/lib/`, but they are only consumed by the JNI
+packaging step. Nothing links them into a Kotlin/Native binary since ADR 0009.
 
 The two Linux bridge files are byte-identical copies. Kotlin/Native links
 `-lsherpa-onnx-kmp-native-desktop`, but the library's `SONAME` — and therefore

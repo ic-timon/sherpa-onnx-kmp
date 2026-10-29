@@ -110,22 +110,24 @@ hosts where they execute. The JVM suite runs over the JNI transport; the shared
 separate because the transports differ: a feature proven by one is not proven
 for the other.
 
-Native execution is not uniform across platforms. macOS arm64, iOS Simulator,
-Linux x64, and Windows x64 run the suite natively. `linuxArm64` has no native
-route — Kotlin/Native does not support linux-aarch64 as a build host, and an
-Android arm64 emulator cannot boot on a hosted runner — so it runs under qemu,
-where streaming ASR, keyword spotting, and speaker diarization currently fail.
-The checks below are evidence for the native hosts; for `linuxArm64` they
-describe intent.
+Native execution was not uniform across the platforms 1.0.0 shipped. macOS
+arm64, iOS Simulator, Linux x64, and Windows x64 ran the suite natively.
+`linuxArm64` had no native route — Kotlin/Native does not support linux-aarch64
+as a build host — so it ran under `qemu-aarch64-static`, and there **three of the
+eight cases failed**: streaming ASR produced no text, keyword spotting detected
+nothing, and speaker diarization exceeded the test timeout. The 1.0.0 artifact
+for that target was therefore shipped unverified, and 2.0.0 removes it
+([ADR 0009](adr/0009-drop-linux-arm64.md)). The checks below are evidence for the
+natively executed hosts only.
 
 | Feature | Model | JVM | Native |
 | --- | --- | --- | --- |
 | VAD | `silero_vad.onnx` | ✓ | ✓ |
-| Keyword spotting | `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01` | ✓ | ✓ (not linuxArm64) |
+| Keyword spotting | `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01` | ✓ | ✓ except linuxArm64 |
 | Punctuation | `sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8` | ✓ | ✓ |
 | Speech enhancement | `gtcrn_simple.onnx` | ✓ | ✓ |
-| Streaming ASR | `sherpa-onnx-streaming-zipformer-en-20M-2023-02-17` | ✓ | ✓ (not linuxArm64) |
-| Speaker diarization | `sherpa-onnx-pyannote-segmentation-3-0` + `3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx` | ✓ | ✓ (not linuxArm64) |
+| Streaming ASR | `sherpa-onnx-streaming-zipformer-en-20M-2023-02-17` | ✓ | ✓ except linuxArm64 |
+| Speaker diarization | `sherpa-onnx-pyannote-segmentation-3-0` + `3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx` | ✓ | ✓ except linuxArm64 |
 | TTS, lexicon path | `vits-icefall-zh-aishell3` | ✓ | ✓ |
 | TTS, phoneme path | `vits-piper-en_US-amy-low` | ✓ | ✓ |
 
@@ -194,8 +196,9 @@ machine, not a hardware-independent guarantee.
 - Physical iOS device execution is a documented gate, not an automated one. The
   device slice builds, links, and signs, but the recorded runs are Simulator and
   macOS.
-- `linuxArm64` requires an aarch64 host or a cross toolchain; real-model
-  inference runs in CI on native runners.
+- `linuxArm64` real-model inference was never executed natively and failed three
+  of eight cases under qemu. The target is removed in 2.0.0 (ADR 0009), so the
+  1.0.0 `linux-arm64` archive should be treated as unverified.
 - The web module is capped at 2 GiB of linear memory. Larger models need
   `MAXIMUM_MEMORY` raised at build time.
 - WebAssembly SIMD is required. Browsers without SIMD are not supported.

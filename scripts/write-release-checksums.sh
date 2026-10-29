@@ -49,7 +49,6 @@ required=(
   "sherpa-onnx-kmp-jvm-native-windows-x64-$version.jar"
   "SherpaOnnxKmp.xcframework.zip"
   "sherpa-onnx-kmp-linux-x64-$version.zip"
-  "sherpa-onnx-kmp-linux-arm64-$version.zip"
   "sherpa-onnx-kmp-windows-x64-$version.zip"
   "sherpa-onnx-kmp-web-$version.zip"
 )

@@ -9,7 +9,7 @@
 # packages its own slice and the release job merges the resulting archives.
 #
 # Usage:
-#   ./scripts/package-release-desktop.sh <linux-x64|linux-arm64|windows-x64> [version]
+#   ./scripts/package-release-desktop.sh <linux-x64|windows-x64> [version]
 #
 # Output: build/release/<version>/sherpa-onnx-kmp-<platform>-<version>.zip
 set -euo pipefail
@@ -23,9 +23,9 @@ platform="${1:-}"
 version="${2:-1.0.0}"
 
 case "$platform" in
-  linux-x64 | linux-arm64 | windows-x64) ;;
+  linux-x64 | windows-x64) ;;
   *)
-    echo "Usage: $0 <linux-x64|linux-arm64|windows-x64> [version]" >&2
+    echo "Usage: $0 <linux-x64|windows-x64> [version]" >&2
     exit 2
     ;;
 esac

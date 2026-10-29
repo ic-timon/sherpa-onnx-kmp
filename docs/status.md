@@ -26,14 +26,12 @@ result schema; the compatibility contract is in
   Piper phoneme TTS path live in `nativeFeatureTest`; before that it covered
   six, and the 1.0.0 notes claimed eight. The device slice builds, links, and
   signs.
-- Linux (`linuxX64`, `linuxArm64`) and Windows (`mingwX64`): the same transport,
-  different linking. Linux ships a shared bridge with a sibling
-  `libonnxruntime.so`; Windows ships a DLL with static ONNX Runtime. See ADR 0007
-  and ADR 0008. `linuxX64` runs natively in CI. `linuxArm64` can only be
-  executed under `qemu-aarch64-static`, because Kotlin/Native does not support
-  linux-aarch64 as a build host; under qemu it takes roughly an hour and three
-  of the eight feature cases currently fail, so treat its green state as
-  unproven rather than verified.
+- Linux (`linuxX64`) and Windows (`mingwX64`): the same transport, different
+  linking. Linux ships a shared bridge with a sibling `libonnxruntime.so`;
+  Windows ships a DLL with static ONNX Runtime. See ADR 0007 and ADR 0008. Both
+  run natively in CI. `linuxArm64` was removed in 2.0.0 because Kotlin/Native
+  has no linux-aarch64 build host, leaving qemu as the only way to execute it,
+  and three of eight feature suites fail there. See ADR 0009.
 - JVM: JNI transport shared with Android, with native-library discovery either
   from an explicit path or from a classpath native JAR.
 - Web (Kotlin/JS): Emscripten module in a dedicated Web Worker. The build now
@@ -85,23 +83,23 @@ and they are not interchangeable:
   advertises every feature, so the Android half is transport and packaging
   evidence rather than per-feature inference evidence.
 - Native cinterop (Apple, Linux, Windows) — eight features against pinned models
-  on macOS arm64, iOS Simulator, Linux x64/arm64, and Windows x64. Every one of
-  those jobs prepares the models and exports both directories before the
-  config task runs, so a suite that finds no fixtures fails instead of skipping.
-  Caveat: `linuxArm64` only executes under qemu and three feature cases fail
-  there today. Its row in the table below is therefore intent, not evidence.
+  on macOS arm64, iOS Simulator, Linux x64, and Windows x64. Every one of those
+  jobs prepares the models and exports both directories before the config task
+  runs, so a suite that finds no fixtures fails instead of skipping. Android and
+  `linuxArm64` are absent from this list for different reasons: Android's device
+  suite asserts packaging, not per-feature inference, and `linuxArm64` is no
+  longer a target (ADR 0009).
 - Web worker — offline ASR end to end in Chromium. Every other feature is
   covered by the capability-parity probe, which proves the module was built with
   the resource, not that the call completes in a worker.
 
 ## Known gaps
 
-- `linuxArm64` real inference is unproven. The suite only runs under
-  `qemu-aarch64-static`, takes about an hour, and currently fails streaming ASR
-  (no text), keyword spotting (no detection), and speaker diarization (timeout)
-  while the same code passes natively on macOS and Linux x64. Whether those are
-  emulation artifacts or an arm64 bug is unresolved; a native execution path is
-  blocked because Kotlin/Native has no linux-aarch64 build host.
+- `linuxArm64` is gone as of 2.0.0 rather than shipped unverified. Its real-model
+  suite only ever ran under `qemu-aarch64-static`, failed streaming ASR, keyword
+  spotting, and speaker diarization there, and no native execution path exists
+  because Kotlin/Native has no linux-aarch64 build host. See ADR 0009. The JNI
+  `linux-aarch64` JAR still ships but has never been executed in CI.
 - Physical iOS and Android device runs are documented gates, not automated CI.
   The iOS device slice builds, links, and signs; the Android device suite runs on
   a pinned emulator.
