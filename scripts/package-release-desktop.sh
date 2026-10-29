@@ -122,15 +122,12 @@ EOF
 
 archive="$out/sherpa-onnx-kmp-$platform-$version.zip"
 rm -f "$archive"
-(
-  cd "$stage"
-  zip -q -r -X "$archive" "$(basename "$root")"
-)
+make_zip "$archive" "$root"
 
 summary="$out/sherpa-onnx-kmp-$platform-$version.zip.sha256"
 (cd "$out" && sha256 "$(basename "$archive")" > "$(basename "$summary")")
 
 printf 'Desktop archive: %s\n' "$archive"
 printf 'Contents:\n'
-unzip -l "$archive" | sed -n '4,$p'
+list_zip "$archive"
 cat "$summary"

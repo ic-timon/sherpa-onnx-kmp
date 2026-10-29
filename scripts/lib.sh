@@ -33,6 +33,52 @@ cache_root() {
   printf '%s\n' "${XDG_CACHE_HOME:-$HOME/.cache}/sherpa-onnx-kmp"
 }
 
+# Archive a directory into a reproducible zip. Windows runners have no `zip` in
+# Git Bash, and the release pipeline must not depend on which packaging detail a
+# particular runner image happens to include, so fall back to Python's zipfile.
+make_zip() {
+  local archive=$1
+  local root=$2
+  local parent
+  parent=$(dirname "$root")
+  local base
+  base=$(basename "$root")
+  rm -f "$archive"
+  if command -v zip >/dev/null 2>&1; then
+    (cd "$parent" && zip -q -r -X "$archive" "$base")
+    return
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "Neither zip nor python3 is available to create $archive" >&2
+    return 1
+  fi
+  python3 - "$archive" "$parent" "$base" <<'PY'
+import os, sys, zipfile
+archive, parent, base = sys.argv[1], sys.argv[2], sys.argv[3]
+with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+    for root, dirs, files in os.walk(os.path.join(parent, base)):
+        dirs.sort()
+        for name in sorted(files):
+            full = os.path.join(root, name)
+            zf.write(full, os.path.relpath(full, parent))
+PY
+}
+
+# List a zip's contents without depending on `unzip` being installed.
+list_zip() {
+  local archive=$1
+  if command -v unzip >/dev/null 2>&1; then
+    unzip -l "$archive" | sed -n '4,$p'
+    return
+  fi
+  python3 - "$archive" <<'PY'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1]) as zf:
+    for info in zf.infolist():
+        print(f"{info.file_size:>10}  {info.filename}")
+PY
+}
+
 # The project version has one source of truth: the `version =` assignment in the
 # module build script. CI, packaging, and release notes all read it from there so
 # a bump cannot leave one of them behind.

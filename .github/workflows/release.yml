@@ -147,11 +147,19 @@ jobs:
             SHERPA_ONNX_KMP_DESKTOP_WITH_JNI=1 ./scripts/build-native-desktop.sh "$desktop_target"
             mkdir -p build/native/lib
             # package-jvm-native.sh reads build/native/lib, so stage the two
-            # libraries the desktop build produced into that tree.
-            find "build/native-desktop/$desktop_target" -name "sherpa-onnx-kmp-jni*" \
-              -not -name "*.a" -not -name "*.lib" -exec cp -f {} build/native/lib/ \;
-            find "build/native-desktop/$desktop_target" -name "sherpa-onnx-portable-bridge.*" \
-              -not -name "*.a" -not -name "*.lib" -exec cp -f {} build/native/lib/ \;
+            # libraries the desktop build produced into that tree. Fail loudly if
+            # the JNI library was not built, because otherwise the packaging step
+            # reports a confusing "no JNI library found".
+            jni_lib=$(find "build/native-desktop/$desktop_target" -name "sherpa-onnx-kmp-jni.*" -print -quit)
+            if [[ -z "$jni_lib" ]]; then
+              echo "The desktop build did not produce sherpa-onnx-kmp-jni; tree:" >&2
+              find "build/native-desktop/$desktop_target" -name "*.so" -o -name "*.dylib" -o -name "*.dll" >&2
+              exit 1
+            fi
+            cp -f "$jni_lib" build/native/lib/
+            bridge_lib=$(find "build/native-desktop/$desktop_target" -name "sherpa-onnx-portable-bridge.*" \
+              -not -name "*.a" -not -name "*.lib" -print -quit)
+            cp -f "$bridge_lib" build/native/lib/
           fi
       - name: Package the JVM native JAR
         shell: bash
@@ -304,6 +312,16 @@ jobs:
             ~/.cache/sherpa-onnx-kmp
             build/upstream
           key: release-windows-x64-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/*.patch', 'native/**') }}
+      - name: Ensure zip is available
+        shell: bash
+        # Git Bash on the Windows runners ships no zip, and the desktop packaging
+        # script archives with it because that keeps one implementation for every
+        # platform.
+        run: |
+          if ! command -v zip >/dev/null 2>&1; then
+            choco install zip -y --no-progress
+            echo "C:/ProgramData/chocolatey/bin" >> "$GITHUB_PATH"
+          fi
       - name: Build the Windows x64 DLL
         shell: bash
         run: ./scripts/build-native-desktop.sh windows-x64
