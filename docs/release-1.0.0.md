@@ -37,7 +37,27 @@ sherpa-onnx      2.0.1   pinned upstream core
 
 Each archive carries a `BUILD-INFO.txt` recording the platform, build host,
 commit, and bridge ABI version, and every artifact is covered by one
-`SHA256SUMS`.
+`SHA256SUMS`. The published v1.0.0 release carries eleven artifacts plus the
+manifest:
+
+| Artifact | Size |
+| --- | --- |
+| `sherpa-onnx-kmp-android-1.0.0.aar` | 115 MiB |
+| `sherpa-onnx-kmp-jvm-1.0.0.jar` | 309 KiB |
+| `sherpa-onnx-kmp-jvm-native-linux-x64-1.0.0.jar` | 9.9 MiB |
+| `sherpa-onnx-kmp-jvm-native-linux-aarch64-1.0.0.jar` | 12 MiB |
+| `sherpa-onnx-kmp-jvm-native-osx-aarch64-1.0.0.jar` | 9.2 MiB |
+| `sherpa-onnx-kmp-jvm-native-windows-x64-1.0.0.jar` | 7.5 MiB |
+| `SherpaOnnxKmp.xcframework.zip` | 33 MiB |
+| `sherpa-onnx-kmp-linux-x64-1.0.0.zip` | 12 MiB |
+| `sherpa-onnx-kmp-linux-arm64-1.0.0.zip` | 14 MiB |
+| `sherpa-onnx-kmp-windows-x64-1.0.0.zip` | 7.4 MiB |
+| `sherpa-onnx-kmp-web-1.0.0.zip` | 4.3 MiB |
+
+The Linux libraries resolve ONNX Runtime through a `$ORIGIN` runpath, so the
+pair in the archive works wherever it is unpacked. A library that carried a
+build-host path would have been a broken artifact, and
+`package-release-desktop.sh` rejects one.
 
 [`release.yml`](../.github/workflows/release.yml) builds each slice on its own
 runner — the AAR needs the NDK and all four ABIs, the XCFramework needs Xcode,

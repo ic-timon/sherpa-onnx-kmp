@@ -101,10 +101,11 @@ These are deferred deliberately, not unfinished:
 
 ## Immediate workstreams
 
-1. Publish every platform artifact for 1.0.0. The `release.yml` workflow builds
-   each slice on its own runner and refuses to write a manifest when one is
-   missing; run it once the GitHub Actions runners used by the matrix are
-   available.
+1. Every 1.0.0 artifact is published: the AAR, the JVM API JAR, four JVM native
+   JARs, the XCFramework, Linux x64/arm64, Windows x64, the web bundle, and
+   `SHA256SUMS`. `release.yml` builds each slice on its own runner and refuses to
+   write a manifest when one is missing, so a future release cannot silently
+   omit a platform the way the v1.0.0 notes originally claimed.
 2. Record physical-device runs for iOS and Android when hardware is available.
 3. Publish to the chosen Maven and Apple coordinates.
 4. Track upstream sherpa-onnx releases and extend the pinned core range after the
