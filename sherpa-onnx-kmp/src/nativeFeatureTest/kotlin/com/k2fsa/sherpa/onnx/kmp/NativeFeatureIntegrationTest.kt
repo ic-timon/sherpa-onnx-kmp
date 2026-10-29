@@ -74,9 +74,10 @@ internal abstract class NativeFeatureIntegrationTest {
         requireModel("silero_vad.onnx", "test_silero_vad.wav")
         val wav = readMono16BitWav("$root/test_silero_vad.wav")
         createSherpaRuntime(FileModelStore(root)).useResource { runtime ->
-            if (!runtime.capabilities.features.contains(SherpaFeature.VAD)) {
-                return@useResource
-            }
+            assertTrue(
+                runtime.capabilities.features.contains(SherpaFeature.VAD),
+                "Fixtures are present, so a missing SherpaFeature.VAD capability is a build regression",
+            )
             val detector = runtime.createVoiceActivityDetector(
                 VadConfig(model = VadModel.Silero(ModelPath("silero_vad.onnx"))),
             )
@@ -123,9 +124,10 @@ internal abstract class NativeFeatureIntegrationTest {
         val modelDir = "$root/$streaming"
         val audio = readMono16BitWav("$modelDir/test_wavs/0.wav")
         createSherpaRuntime(FileModelStore(root)).useResource { runtime ->
-            if (!runtime.capabilities.features.contains(SherpaFeature.ONLINE_ASR)) {
-                return@useResource
-            }
+            assertTrue(
+                runtime.capabilities.features.contains(SherpaFeature.ONLINE_ASR),
+                "Fixtures are present, so a missing SherpaFeature.ONLINE_ASR capability is a build regression",
+            )
             val recognizer = runtime.createOnlineRecognizer(
                 OnlineRecognizerConfig(
                     modelConfig = OnlineModelConfig(
@@ -185,9 +187,10 @@ internal abstract class NativeFeatureIntegrationTest {
             "$modelDir/lexicon.txt",
         )
         createSherpaRuntime(FileModelStore("$root/$modelDir")).useResource { runtime ->
-            if (!runtime.capabilities.features.contains(SherpaFeature.TTS)) {
-                return@useResource
-            }
+            assertTrue(
+                runtime.capabilities.features.contains(SherpaFeature.TTS),
+                "Fixtures are present, so a missing SherpaFeature.TTS capability is a build regression",
+            )
             val tts = runtime.createOfflineTts(
                 OfflineTtsConfig(
                     model = TtsModel.Vits(
@@ -222,6 +225,92 @@ internal abstract class NativeFeatureIntegrationTest {
     }
 
     @Test
+    fun ttsGeneratesAudioFromPhonemeCodepoints() = runTest {
+        val root = root().ifBlank { return@runTest }
+        val modelDir = "vits-piper-en_US-amy-low"
+        requireDirectory(modelDir)
+        requireModel("$modelDir/en_US-amy-low.onnx", "$modelDir/tokens.txt")
+        createSherpaRuntime(FileModelStore("$root/$modelDir")).useResource { runtime ->
+            assertTrue(
+                runtime.capabilities.features.contains(SherpaFeature.TTS),
+                "Fixtures are present, so a missing SherpaFeature.TTS capability is a build regression",
+            )
+            val tts = runtime.createOfflineTts(
+                OfflineTtsConfig(
+                    model = TtsModel.Vits(
+                        model = ModelPath("en_US-amy-low.onnx"),
+                        tokens = ModelPath("tokens.txt"),
+                    ),
+                ),
+            )
+            tts.useResource {
+                assertTrue(it.sampleRate > 0, "TTS reported no sample rate")
+
+                // "hello world" in IPA, as piper_phonemize would emit it.
+                val ipa = "hɛˈloʊ wɜːld"
+                val chunks = it.generate(
+                    TtsRequest(
+                        text = "hello world",
+                        phonemeCodepoints = listOf(ipa.map { ch -> ch.code }),
+                    ),
+                ).toList()
+                assertTrue(chunks.isNotEmpty(), "TTS produced no chunks")
+                val total = chunks.sumOf { chunk -> chunk.samples.size }
+                assertTrue(total > 1000, "TTS produced $total samples")
+                assertTrue(chunks.last().isLast)
+            }
+
+            // Without phonemes the same model must fail, not emit silence. The
+            // distinction matters: silent audio would look like a working path
+            // in any waveform-length assertion.
+            val bare = runCatching {
+                tts.generate(TtsRequest(text = "hello world")).toList()
+            }
+            assertTrue(
+                bare.isFailure,
+                "A Piper model with no phonemes and no lexicon must fail loudly",
+            )
+        }
+    }
+
+    @Test
+    fun speechEnhancerDenoisesPinnedFixture() = runTest {
+        val root = root().ifBlank { return@runTest }
+        requireModel("gtcrn_simple.onnx")
+        val wavRelative = "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01/test_wavs/0.wav"
+        requireModel(wavRelative)
+        val audio = readMono16BitWav("$root/$wavRelative")
+        createSherpaRuntime(FileModelStore(root)).useResource { runtime ->
+            assertTrue(
+                runtime.capabilities.features.contains(SherpaFeature.SPEECH_ENHANCEMENT),
+                "Fixtures are present, so a missing SherpaFeature.SPEECH_ENHANCEMENT capability is a build regression",
+            )
+            val enhancer = runtime.createSpeechEnhancer(
+                SpeechEnhancementConfig(
+                    model = DenoiserModel.Gtcrn(ModelPath("gtcrn_simple.onnx")),
+                ),
+            )
+            enhancer.useResource {
+                val denoised = it.denoise(audio)
+                assertTrue(denoised.sampleRate > 0, "Enhancer reported no sample rate")
+                assertTrue(
+                    denoised.samples.isNotEmpty(),
+                    "Enhancer returned no audio for the pinned fixture",
+                )
+                // A denoiser resamples to its own rate, so compare duration
+                // rather than sample count: matching lengths would only be
+                // true when the rates happened to agree.
+                val expected = audio.samples.size.toDouble() / audio.sampleRate
+                val actual = denoised.samples.size.toDouble() / denoised.sampleRate
+                assertTrue(
+                    actual > expected * 0.5 && actual < expected * 1.5,
+                    "Enhancer duration ${actual}s is not close to the input ${expected}s",
+                )
+            }
+        }
+    }
+
+    @Test
     fun speakerDiarizationSeparatesTwoSpeakers() = runTest {
         val root = root().ifBlank { return@runTest }
         requireDirectory("sherpa-onnx-pyannote-segmentation-3-0")
@@ -232,9 +321,10 @@ internal abstract class NativeFeatureIntegrationTest {
         )
         val audio = readMono16BitWav("$root/2-two-speakers-en.wav")
         createSherpaRuntime(FileModelStore(root)).useResource { runtime ->
-            if (!runtime.capabilities.features.contains(SherpaFeature.SPEAKER_DIARIZATION)) {
-                return@useResource
-            }
+            assertTrue(
+                runtime.capabilities.features.contains(SherpaFeature.SPEAKER_DIARIZATION),
+                "Fixtures are present, so a missing SherpaFeature.SPEAKER_DIARIZATION capability is a build regression",
+            )
             val diarization = runtime.createSpeakerDiarization(
                 SpeakerDiarizationConfig(
                     segmentationModel = ModelPath(

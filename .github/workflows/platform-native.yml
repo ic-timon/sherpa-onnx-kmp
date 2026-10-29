@@ -63,6 +63,8 @@ jobs:
           key: desktop-linux-x64-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch', 'native/**', 'sherpa-onnx-kmp/build.gradle.kts') }}
       - name: Build native desktop libraries
         run: ./scripts/build-native-desktop.sh linux-x64
+      - name: Prepare pinned feature models
+        run: ./scripts/prepare-feature-models.sh
       - name: Inspect runtime dependencies
         run: |
           lib=build/native-desktop/linux-x64/lib/libsherpa-onnx-kmp-native-desktop.so
@@ -94,6 +96,15 @@ jobs:
           echo "Runtime dependency inspection: OK"
       - name: Build and test Linux x64 KMP target
         run: |
+          # The feature suite is only meaningful with the pinned models present:
+          # without them every case returns early and the job would report green
+          # for a suite that never ran. Both directories are exported before the
+          # config task runs, because the paths are baked into generated compile
+          # constants rather than read at test time.
+          export SHERPA_ONNX_KMP_TEST_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/models/sherpa-onnx-nemo-ctc-fa-shenava-rizeh-pizeh-v1.0-non-streaming-int8-2026-06-26"
+          export SHERPA_ONNX_KMP_FEATURE_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/feature-models"
+          test -d "$SHERPA_ONNX_KMP_FEATURE_MODEL_DIR"
+          test -d "$SHERPA_ONNX_KMP_TEST_MODEL_DIR"
           # The test executable resolves the bridge through its rpath entries,
           # which point next to the binary and into a sibling `lib/`. Stage the
           # shared libraries in both places so either resolution wins.
@@ -153,6 +164,8 @@ jobs:
           key: desktop-linux-arm64-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch', 'native/**', 'sherpa-onnx-kmp/build.gradle.kts') }}
       - name: Build native desktop libraries
         run: ./scripts/build-native-desktop.sh linux-arm64
+      - name: Prepare pinned feature models
+        run: ./scripts/prepare-feature-models.sh
       - name: Inspect runtime dependencies
         run: |
           lib=build/native-desktop/linux-arm64/lib/libsherpa-onnx-kmp-native-desktop.so
@@ -182,11 +195,18 @@ jobs:
             echo "Bridge does not link against libonnxruntime" >&2
             aarch64-linux-gnu-readelf -d "$lib" >&2; exit 1; }
           echo "Runtime dependency inspection: OK"
+      - name: Prepare pinned feature models
+        run: ./scripts/prepare-feature-models.sh
       - name: Link Linux arm64 test binary
         run: >-
           ./gradlew
           :sherpa-onnx-kmp:linkDebugTestLinuxArm64
           --stacktrace
+        env:
+          # The model paths are baked into generated compile constants, so they
+          # must be present at link time, not at run time.
+          SHERPA_ONNX_KMP_TEST_MODEL_DIR: ${{ env.HOME }}/.cache/sherpa-onnx-kmp/models/sherpa-onnx-nemo-ctc-fa-shenava-rizeh-pizeh-v1.0-non-streaming-int8-2026-06-26
+          SHERPA_ONNX_KMP_FEATURE_MODEL_DIR: ${{ env.HOME }}/.cache/sherpa-onnx-kmp/feature-models
       - name: Run Linux arm64 tests under qemu
         run: |
           binary=$(find sherpa-onnx-kmp/build/bin/linuxArm64 -name "*.kexe" | head -n 1)
@@ -205,6 +225,12 @@ jobs:
             cp -f "build/native-desktop/linux-arm64/lib/$so" "$bin_dir/"
             cp -f "build/native-desktop/linux-arm64/lib/$so" "$bin_dir/lib/"
           done
+          # Both model directories must exist before the suite runs: qemu-hosted
+          # cases that find no fixtures return early and would report green for
+          # a suite that never inferred anything.
+          export SHERPA_ONNX_KMP_TEST_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/models/sherpa-onnx-nemo-ctc-fa-shenava-rizeh-pizeh-v1.0-non-streaming-int8-2026-06-26"
+          export SHERPA_ONNX_KMP_FEATURE_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/feature-models"
+          test -d "$SHERPA_ONNX_KMP_FEATURE_MODEL_DIR"
           qemu-aarch64-static -L /usr/aarch64-linux-gnu "$binary"
   windows-x64:
     runs-on: windows-2022
@@ -238,6 +264,9 @@ jobs:
       - name: Build native desktop libraries
         shell: bash
         run: ./scripts/build-native-desktop.sh windows-x64
+      - name: Prepare pinned feature models
+        shell: bash
+        run: ./scripts/prepare-feature-models.sh
       - name: Inspect runtime dependencies
         shell: bash
         run: |
@@ -273,6 +302,13 @@ jobs:
           # A Kotlin/Native test executable resolves the bridge DLL at load time.
           # Windows searches the executable's directory first, so the DLL is
           # staged there before the test task runs.
+          #
+          # The feature suite is only meaningful with the pinned models present;
+          # otherwise every case returns early and the task reports success for
+          # a suite that never ran.
+          export SHERPA_ONNX_KMP_TEST_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/models/sherpa-onnx-nemo-ctc-fa-shenava-rizeh-pizeh-v1.0-non-streaming-int8-2026-06-26"
+          export SHERPA_ONNX_KMP_FEATURE_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/feature-models"
+          test -d "$SHERPA_ONNX_KMP_FEATURE_MODEL_DIR"
           ./gradlew :sherpa-onnx-kmp:linkDebugTestMingwX64 --stacktrace
           bin_dir=$(find sherpa-onnx-kmp/build/bin/mingwX64 -type d -name debugTest | head -n 1)
           if [[ -z "$bin_dir" ]]; then

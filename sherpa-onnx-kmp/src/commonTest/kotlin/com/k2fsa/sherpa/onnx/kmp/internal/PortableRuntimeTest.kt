@@ -183,6 +183,32 @@ class PortableRuntimeTest {
         }
     }
 
+    /**
+     * A bridge that reports success without returning audio must fail.
+     *
+     * Returning an empty `AudioData` would be indistinguishable from a
+     * successfully denoised silence in any length-based assertion, which is how
+     * a broken pull path stays green.
+     */
+    @Test
+    fun speechEnhancerRejectsSilentSuccess() = runTest {
+        createRuntime(FakeBridge(denoiserReturnsAudio = false)).useResource { runtime ->
+            runtime.createSpeechEnhancer(
+                SpeechEnhancementConfig(
+                    model = DenoiserModel.Gtcrn(ModelPath("gtcrn.onnx")),
+                ),
+            ).useResource { enhancer ->
+                val failure = runCatching {
+                    enhancer.denoise(AudioData(FloatArray(8) { 0.5f }, 16_000))
+                }
+                assertTrue(
+                    failure.isFailure,
+                    "A denoise call with no audio payload must fail, not return empty samples",
+                )
+            }
+        }
+    }
+
     @Test
     fun keywordSpotterStreamReportsDetection() = runTest {
         createRuntime(FakeBridge()).useResource { runtime ->
@@ -253,6 +279,7 @@ class PortableRuntimeTest {
  * engine's parsing breaks this test rather than a device run.
  */
 internal class FakeBridge(
+    private val denoiserReturnsAudio: Boolean = true,
     private val resources: Set<String> = setOf(
         "offline-asr",
         "online-asr",
@@ -457,10 +484,15 @@ internal class FakeBridge(
                 )
             }
 
-            "speech-denoiser.take-audio" -> BridgeReply(
-                json = """{"sampleRate":16000,"numSamples":8}""",
-                audio = AudioChunk(FloatArray(8), 16_000, progress = 1.0f, isLast = true),
-            )
+            "speech-denoiser.take-audio" -> if (denoiserReturnsAudio) {
+                BridgeReply(
+                    json = """{"sampleRate":16000,"numSamples":8}""",
+                    audio = AudioChunk(FloatArray(8), 16_000, progress = 1.0f, isLast = true),
+                )
+            } else {
+                // A bridge that accepts the call and then returns no payload.
+                BridgeReply(json = """{"sampleRate":16000,"numSamples":0}""")
+            }
 
             else -> error("Unexpected audio operation: $operation")
         }

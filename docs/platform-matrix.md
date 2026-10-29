@@ -17,7 +17,10 @@ library reports from `SherpaOnnxBridgeInfoJson()` at runtime.
 - Primary tested ABI: arm64-v8a
 - Android 16 KB page compatibility is verified by 0x4000 ELF segment alignment
   for the 64-bit native libraries.
-- Device suite: API 36.1 arm64 emulator.
+- Device suite: API 36 x86_64 emulator. Every ABI is compiled and its exported
+  symbols are inspected, but only x86_64 executes on the hosted runner.
+- Real-inference evidence for the other seven features comes from the JVM
+  suite, which drives the same JNI transport.
 - Android below API 29 has no TLS helper in `libc`. The upstream core's only
   `thread_local` lives in `normal-data-generator.cc`, and enabling TTS is what
   first referenced it: with `SHERPA_ONNX_ENABLE_TTS` off, that archive member
@@ -112,20 +115,28 @@ creation fails with a typed exception naming the supported set.
 
 ### Verified feature evidence
 
-Real-model suites run on the JVM, macOS arm64, and the iOS Simulator from the
-shared `nativeFeatureTest` source set. Android and the native desktops share the
-same bridge, and the Android device suite plus the desktop CI jobs cover them.
+Two suites assert real inference, and they do not cover the same ground. The
+JVM suite drives the JNI transport against all eight features. The shared
+`nativeFeatureTest` source set drives the native cinterop transport on macOS
+arm64 and the iOS Simulator, and covers six.
 
-| Feature | Pinned model | Assertion |
-| --- | --- | --- |
-| VAD | `silero_vad.onnx` | at least one speech segment in a speech clip |
-| Keyword spotting | `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01` | the configured keyword fires |
-| Punctuation | `sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8` | punctuation is inserted |
-| Speech enhancement | `gtcrn_simple.onnx` | output length equals input length |
-| Streaming ASR | `sherpa-onnx-streaming-zipformer-en-20M-2023-02-17` | non-empty transcript, endpoint reached |
-| Speaker diarization | pyannote segmentation + `3dspeaker` embedding | two speakers, ordered turns |
-| TTS, lexicon | `vits-icefall-zh-aishell3` | audio with samples at the model's sample rate |
-| TTS, phonemes | `vits-piper-en_US-amy-low` | audio when codepoints are supplied; error when not |
+| Feature | Pinned model | Assertion | Real-model suite |
+| --- | --- | --- | --- |
+| VAD | `silero_vad.onnx` | at least one speech segment in a speech clip | JVM, native |
+| Keyword spotting | `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01` | the configured keyword fires | JVM, native |
+| Punctuation | `sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8` | punctuation is inserted | JVM, native |
+| Speech enhancement | `gtcrn_simple.onnx` | output length equals input length | JVM |
+| Streaming ASR | `sherpa-onnx-streaming-zipformer-en-20M-2023-02-17` | non-empty transcript, endpoint reached | JVM, native |
+| Speaker diarization | pyannote segmentation + `3dspeaker` embedding | two speakers, ordered turns | JVM, native |
+| TTS, lexicon | `vits-icefall-zh-aishell3` | audio with samples at the model's sample rate | JVM, native |
+| TTS, phonemes | `vits-piper-en_US-amy-low` | audio when codepoints are supplied; error when not | JVM |
+
+Android and the native desktops share a transport with one of these two, but
+neither runs the per-feature inference assertions itself: the Android device
+suite transcribes one model and checks the packaged `.so` advertises every
+feature, and the Linux and Windows jobs run `nativeFeatureTest` only when a
+feature model directory is configured. Read the table as "which suite proves
+this feature runs", not "which platforms ship it".
 
 ## Explicitly unsupported
 

@@ -724,9 +724,12 @@ internal class PortableSpeechEnhancer(
         transport.pushAudio(handle, "speech-denoiser.set-audio", audio)
         transport.call(handle, "speech-denoiser.denoise")
         val reply = transport.pullAudio(handle, "speech-denoiser.take-audio")
-        val chunk = reply.audio ?: return@withLock AudioData(
-            samples = FloatArray(0),
-            sampleRate = audio.sampleRate,
+        // A missing audio payload means the bridge accepted the call but
+        // produced nothing. Returning empty samples would look like a
+        // successfully denoised silence, which is indistinguishable from a
+        // real result in every length-based assertion.
+        val chunk = reply.audio ?: throw SherpaOnnxException(
+            "The bridge reported success but returned no enhanced audio",
         )
         AudioData(samples = chunk.samples, sampleRate = chunk.sampleRate)
     }
