@@ -29,7 +29,11 @@ result schema; the compatibility contract is in
 - Linux (`linuxX64`, `linuxArm64`) and Windows (`mingwX64`): the same transport,
   different linking. Linux ships a shared bridge with a sibling
   `libonnxruntime.so`; Windows ships a DLL with static ONNX Runtime. See ADR 0007
-  and ADR 0008.
+  and ADR 0008. `linuxX64` runs natively in CI. `linuxArm64` can only be
+  executed under `qemu-aarch64-static`, because Kotlin/Native does not support
+  linux-aarch64 as a build host; under qemu it takes roughly an hour and three
+  of the eight feature cases currently fail, so treat its green state as
+  unproven rather than verified.
 - JVM: JNI transport shared with Android, with native-library discovery either
   from an explicit path or from a classpath native JAR.
 - Web (Kotlin/JS): Emscripten module in a dedicated Web Worker. The build now
@@ -82,21 +86,29 @@ and they are not interchangeable:
   evidence rather than per-feature inference evidence.
 - Native cinterop (Apple, Linux, Windows) — eight features against pinned models
   on macOS arm64, iOS Simulator, Linux x64/arm64, and Windows x64. Every one of
-  those jobs now prepares the models and exports both directories before the
+  those jobs prepares the models and exports both directories before the
   config task runs, so a suite that finds no fixtures fails instead of skipping.
+  Caveat: `linuxArm64` only executes under qemu and three feature cases fail
+  there today. Its row in the table below is therefore intent, not evidence.
 - Web worker — offline ASR end to end in Chromium. Every other feature is
   covered by the capability-parity probe, which proves the module was built with
   the resource, not that the call completes in a worker.
 
 ## Known gaps
 
+- `linuxArm64` real inference is unproven. The suite only runs under
+  `qemu-aarch64-static`, takes about an hour, and currently fails streaming ASR
+  (no text), keyword spotting (no detection), and speaker diarization (timeout)
+  while the same code passes natively on macOS and Linux x64. Whether those are
+  emulation artifacts or an arm64 bug is unresolved; a native execution path is
+  blocked because Kotlin/Native has no linux-aarch64 build host.
 - Physical iOS and Android device runs are documented gates, not automated CI.
   The iOS device slice builds, links, and signs; the Android device suite runs on
   a pinned emulator.
 - The Android device suite executes on x86_64. The arm64-v8a slice is compiled
   and its exported symbols are checked, but no arm64 code has executed in CI.
-- `linuxArm64` and Windows are built and tested in CI on native runners, not on
-  the development host.
+- Windows is built and tested in CI on a native Windows runner, not on the
+  development host.
 - The memory-growth check runs in a shortened mode on the CI runner; the full
   run is a local gate.
 - Web feature coverage beyond offline ASR is capability parity, not a behavioral

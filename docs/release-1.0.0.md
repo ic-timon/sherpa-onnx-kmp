@@ -95,29 +95,37 @@ fails the build if any of the ten resources is missing.
 
 | Target | Tests |
 | --- | --- |
-| `jvmTest` | 45 |
-| `jsNodeTest` | 36 |
-| `jsBrowserTest` | 36 |
-| `macosArm64Test` | 42 |
-| `iosSimulatorArm64Test` | 42 |
+| `jvmTest` | 46 |
+| `jsNodeTest` | 37 |
+| `jsBrowserTest` | 37 |
+| `macosArm64Test` | 45 |
+| `iosSimulatorArm64Test` | 45 |
 | Android device (API 36 x86_64 emulator) | 2 |
 
 ### Real-model feature suites
 
-Both real-model suites assert all eight features against pinned models. The
-JVM suite runs over the JNI transport; the shared `nativeFeatureTest` source
-set runs over the native cinterop transport on macOS arm64 and the iOS
-Simulator. They stay separate because the transports differ: a feature proven
-by one is not proven for the other.
+Both real-model suites assert all eight features against pinned models on the
+hosts where they execute. The JVM suite runs over the JNI transport; the shared
+`nativeFeatureTest` set runs over the native cinterop transport. They stay
+separate because the transports differ: a feature proven by one is not proven
+for the other.
+
+Native execution is not uniform across platforms. macOS arm64, iOS Simulator,
+Linux x64, and Windows x64 run the suite natively. `linuxArm64` has no native
+route — Kotlin/Native does not support linux-aarch64 as a build host, and an
+Android arm64 emulator cannot boot on a hosted runner — so it runs under qemu,
+where streaming ASR, keyword spotting, and speaker diarization currently fail.
+The checks below are evidence for the native hosts; for `linuxArm64` they
+describe intent.
 
 | Feature | Model | JVM | Native |
 | --- | --- | --- | --- |
 | VAD | `silero_vad.onnx` | ✓ | ✓ |
-| Keyword spotting | `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01` | ✓ | ✓ |
+| Keyword spotting | `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01` | ✓ | ✓ (not linuxArm64) |
 | Punctuation | `sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8` | ✓ | ✓ |
 | Speech enhancement | `gtcrn_simple.onnx` | ✓ | ✓ |
-| Streaming ASR | `sherpa-onnx-streaming-zipformer-en-20M-2023-02-17` | ✓ | ✓ |
-| Speaker diarization | `sherpa-onnx-pyannote-segmentation-3-0` + `3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx` | ✓ | ✓ |
+| Streaming ASR | `sherpa-onnx-streaming-zipformer-en-20M-2023-02-17` | ✓ | ✓ (not linuxArm64) |
+| Speaker diarization | `sherpa-onnx-pyannote-segmentation-3-0` + `3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx` | ✓ | ✓ (not linuxArm64) |
 | TTS, lexicon path | `vits-icefall-zh-aishell3` | ✓ | ✓ |
 | TTS, phoneme path | `vits-piper-en_US-amy-low` | ✓ | ✓ |
 

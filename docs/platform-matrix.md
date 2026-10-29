@@ -133,12 +133,19 @@ for the other.
 | TTS, lexicon | `vits-icefall-zh-aishell3` | audio with samples at the model's sample rate | JVM, native |
 | TTS, phonemes | `vits-piper-en_US-amy-low` | audio when codepoints are supplied; error when not | JVM, native |
 
+One row of that table is not yet true in CI: on `linuxArm64`, streaming ASR,
+keyword spotting, and speaker diarization fail under qemu. The macOS, iOS
+Simulator, Linux x64, and Windows runs are the evidence; the arm64 column
+records what the suite is supposed to establish once arm64 can be executed
+natively.
+
 Android is the one target that does not run per-feature inference assertions
 itself: the device suite transcribes one model and checks the packaged `.so`
 advertises every feature. That is packaging and transport evidence, not
-per-feature evidence. On Linux and Windows the shared native suite now runs
-against the pinned models in CI, so it does assert them. Read the table as
-"which suite proves this feature runs", not "which platforms ship it".
+per-feature evidence. On Linux and Windows the shared native suite runs against
+the pinned models in CI, so it does assert them — except on `linuxArm64`, which
+only executes under qemu and fails three cases today. Read the table as "which
+suite proves this feature runs", not "which platforms ship it".
 
 ## Explicitly unsupported
 
