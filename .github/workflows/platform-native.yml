@@ -63,8 +63,10 @@ jobs:
           key: desktop-linux-x64-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch', 'native/**', 'sherpa-onnx-kmp/build.gradle.kts') }}
       - name: Build native desktop libraries
         run: ./scripts/build-native-desktop.sh linux-x64
-      - name: Prepare pinned feature models
-        run: ./scripts/prepare-feature-models.sh
+      - name: Prepare pinned models
+        run: |
+          ./scripts/prepare-pinned-model.sh
+          ./scripts/prepare-feature-models.sh
       - name: Inspect runtime dependencies
         run: |
           lib=build/native-desktop/linux-x64/lib/libsherpa-onnx-kmp-native-desktop.so
@@ -164,8 +166,10 @@ jobs:
           key: desktop-linux-arm64-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch', 'native/**', 'sherpa-onnx-kmp/build.gradle.kts') }}
       - name: Build native desktop libraries
         run: ./scripts/build-native-desktop.sh linux-arm64
-      - name: Prepare pinned feature models
-        run: ./scripts/prepare-feature-models.sh
+      - name: Prepare pinned models
+        run: |
+          ./scripts/prepare-pinned-model.sh
+          ./scripts/prepare-feature-models.sh
       - name: Inspect runtime dependencies
         run: |
           lib=build/native-desktop/linux-arm64/lib/libsherpa-onnx-kmp-native-desktop.so
@@ -195,18 +199,21 @@ jobs:
             echo "Bridge does not link against libonnxruntime" >&2
             aarch64-linux-gnu-readelf -d "$lib" >&2; exit 1; }
           echo "Runtime dependency inspection: OK"
-      - name: Prepare pinned feature models
-        run: ./scripts/prepare-feature-models.sh
+      - name: Prepare pinned models
+        run: |
+          ./scripts/prepare-pinned-model.sh
+          ./scripts/prepare-feature-models.sh
       - name: Link Linux arm64 test binary
-        run: >-
-          ./gradlew
-          :sherpa-onnx-kmp:linkDebugTestLinuxArm64
-          --stacktrace
-        env:
+        run: |
           # The model paths are baked into generated compile constants, so they
-          # must be present at link time, not at run time.
-          SHERPA_ONNX_KMP_TEST_MODEL_DIR: ${{ env.HOME }}/.cache/sherpa-onnx-kmp/models/sherpa-onnx-nemo-ctc-fa-shenava-rizeh-pizeh-v1.0-non-streaming-int8-2026-06-26
-          SHERPA_ONNX_KMP_FEATURE_MODEL_DIR: ${{ env.HOME }}/.cache/sherpa-onnx-kmp/feature-models
+          # must be exported before Gradle configures the task, not at run time.
+          # `${{ env.HOME }}` resolves to empty in an `env:` block because the
+          # `env` context only carries workflow-defined variables, which baked
+          # a `/.cache/...` path on the first attempt.
+          export SHERPA_ONNX_KMP_TEST_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/models/sherpa-onnx-nemo-ctc-fa-shenava-rizeh-pizeh-v1.0-non-streaming-int8-2026-06-26"
+          export SHERPA_ONNX_KMP_FEATURE_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/feature-models"
+          test -d "$SHERPA_ONNX_KMP_FEATURE_MODEL_DIR"
+          ./gradlew :sherpa-onnx-kmp:linkDebugTestLinuxArm64 --stacktrace
       - name: Run Linux arm64 tests under qemu
         run: |
           binary=$(find sherpa-onnx-kmp/build/bin/linuxArm64 -name "*.kexe" | head -n 1)
@@ -264,9 +271,11 @@ jobs:
       - name: Build native desktop libraries
         shell: bash
         run: ./scripts/build-native-desktop.sh windows-x64
-      - name: Prepare pinned feature models
+      - name: Prepare pinned models
         shell: bash
-        run: ./scripts/prepare-feature-models.sh
+        run: |
+          ./scripts/prepare-pinned-model.sh
+          ./scripts/prepare-feature-models.sh
       - name: Inspect runtime dependencies
         shell: bash
         run: |

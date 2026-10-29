@@ -69,9 +69,15 @@ jobs:
   # GitHub-hosted x86 runner can execute with KVM. The arm64-v8a slice is the
   # primary ABI for real phones, so it gets its own job on an arm64 runner.
   # Without it, arm64-v8a is compiled and symbol-checked but never executed.
+  #
+  # The arm64 runner image ships no Android SDK, unlike the x86 images, so the
+  # toolchain is installed here explicitly.
   emulator-arm64:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 90
+    timeout-minutes: 120
+    env:
+      ANDROID_SDK_ROOT: /home/runner/android-sdk
+      ANDROID_HOME: /home/runner/android-sdk
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -79,10 +85,19 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
+      - name: Install Android command line tools
+        run: |
+          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+          cd "$ANDROID_SDK_ROOT/cmdline-tools"
+          curl -fsSL -o tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q tools.zip
+          mv cmdline-tools latest
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --version
       - name: Ensure Android NDK
         run: |
-          if [[ ! -d "$ANDROID_HOME/ndk/28.2.13676358" ]]; then
-            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;28.2.13676358" >/dev/null
+          if [[ ! -d "$ANDROID_SDK_ROOT/ndk/28.2.13676358" ]]; then
+            yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "ndk;28.2.13676358" >/dev/null
           fi
       - name: Verify KVM is available
         run: |
