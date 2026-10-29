@@ -125,7 +125,12 @@ jobs:
           done
           ./gradlew :sherpa-onnx-kmp:linuxX64Test --stacktrace
   linux-arm64:
-    runs-on: ubuntu-24.04
+    # Runs on a native arm64 runner. An earlier revision ran the arm64 binary
+    # under qemu-aarch64-static on an x86 host, which took over an hour and
+    # failed three of the eight feature suites with empty transcripts and missed
+    # keywords. Those look like emulation artifacts rather than arm64 bugs, and
+    # a native runner settles which it is without spending an hour per attempt.
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 120
     env:
       GH_TOKEN: ${{ github.token }}
@@ -140,22 +145,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build build-essential \
-            g++-aarch64-linux-gnu qemu-user-static
-          # The Kotlin/Native binary is linked against the konan aarch64 sysroot
-          # (glibc 2.25), so it records `libcrypt.so.1` — a library Ubuntu split
-          # out of glibc into `libcrypt1` and stopped shipping in the base image.
-          # qemu runs with `-L /usr/aarch64-linux-gnu`, so the arm64 build of that
-          # package has to be unpacked into the cross sysroot.
-          sudo dpkg --add-architecture arm64
-          cd /tmp
-          curl -fsSLO http://ports.ubuntu.com/ubuntu-ports/pool/main/libx/libxcrypt/libcrypt1_4.4.36-4build1_arm64.deb
-          echo "5cd73ba112507dabd8e43b528ca9f530719a370e014b8e3e797770e6e940cccf  libcrypt1_4.4.36-4build1_arm64.deb" \
-            | sha256sum -c -
-          sudo dpkg -x libcrypt1_4.4.36-4build1_arm64.deb /tmp/libcrypt-arm64
-          sudo cp -a /tmp/libcrypt-arm64/usr/lib/aarch64-linux-gnu/libcrypt.so.1* \
-            /usr/aarch64-linux-gnu/lib/
-          ls -l /usr/aarch64-linux-gnu/lib/libcrypt.so.1*
+            cmake ninja-build build-essential
+
       - name: Cache native desktop dependencies
         uses: actions/cache@v4
         with:
@@ -179,7 +170,7 @@ jobs:
             echo "Bridge library is not aarch64" >&2; file "$lib" >&2; exit 1; }
           # Extract just the symbol names. `nm` prefixes a type letter and, for
           # defined symbols, an address, so the last field is the name.
-          aarch64-linux-gnu-nm -D --defined-only "$lib" 2>/dev/null \
+          nm -D --defined-only "$lib" 2>/dev/null \
             | awk '{print $NF}' > /tmp/exported-arm64.txt || true
           wc -l /tmp/exported-arm64.txt
           for symbol in \
@@ -195,14 +186,10 @@ jobs:
             grep -Fxq "$symbol" /tmp/exported-arm64.txt || {
               echo "Missing exported symbol: $symbol" >&2; exit 1; }
           done
-          aarch64-linux-gnu-readelf -d "$lib" | grep -q 'libonnxruntime' || {
+          readelf -d "$lib" | grep -q 'libonnxruntime' || {
             echo "Bridge does not link against libonnxruntime" >&2
-            aarch64-linux-gnu-readelf -d "$lib" >&2; exit 1; }
+            readelf -d "$lib" >&2; exit 1; }
           echo "Runtime dependency inspection: OK"
-      - name: Prepare pinned models
-        run: |
-          ./scripts/prepare-pinned-model.sh
-          ./scripts/prepare-feature-models.sh
       - name: Link Linux arm64 test binary
         run: |
           # The model paths are baked into generated compile constants, so they
@@ -214,7 +201,7 @@ jobs:
           export SHERPA_ONNX_KMP_FEATURE_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/feature-models"
           test -d "$SHERPA_ONNX_KMP_FEATURE_MODEL_DIR"
           ./gradlew :sherpa-onnx-kmp:linkDebugTestLinuxArm64 --stacktrace
-      - name: Run Linux arm64 tests under qemu
+      - name: Run Linux arm64 tests
         run: |
           binary=$(find sherpa-onnx-kmp/build/bin/linuxArm64 -name "*.kexe" | head -n 1)
           if [[ -z "$binary" ]]; then
@@ -232,13 +219,13 @@ jobs:
             cp -f "build/native-desktop/linux-arm64/lib/$so" "$bin_dir/"
             cp -f "build/native-desktop/linux-arm64/lib/$so" "$bin_dir/lib/"
           done
-          # Both model directories must exist before the suite runs: qemu-hosted
-          # cases that find no fixtures return early and would report green for
-          # a suite that never inferred anything.
+          # Both model directories must exist before the suite runs: cases that
+          # find no fixtures return early and would report green for a suite
+          # that never inferred anything.
           export SHERPA_ONNX_KMP_TEST_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/models/sherpa-onnx-nemo-ctc-fa-shenava-rizeh-pizeh-v1.0-non-streaming-int8-2026-06-26"
           export SHERPA_ONNX_KMP_FEATURE_MODEL_DIR="$HOME/.cache/sherpa-onnx-kmp/feature-models"
           test -d "$SHERPA_ONNX_KMP_FEATURE_MODEL_DIR"
-          qemu-aarch64-static -L /usr/aarch64-linux-gnu "$binary"
+          "$binary"
   windows-x64:
     runs-on: windows-2022
     timeout-minutes: 120
