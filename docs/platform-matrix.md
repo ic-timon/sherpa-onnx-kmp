@@ -115,28 +115,30 @@ creation fails with a typed exception naming the supported set.
 
 ### Verified feature evidence
 
-Two suites assert real inference, and they do not cover the same ground. The
-JVM suite drives the JNI transport against all eight features. The shared
+Two suites assert real inference against pinned models, and both now cover all
+eight features. The JVM suite drives the JNI transport; the shared
 `nativeFeatureTest` source set drives the native cinterop transport on macOS
-arm64 and the iOS Simulator, and covers six.
+arm64, the iOS Simulator, Linux, and Windows. They are kept separate because
+they exercise different transports, so a feature proven by one is not proven
+for the other.
 
 | Feature | Pinned model | Assertion | Real-model suite |
 | --- | --- | --- | --- |
 | VAD | `silero_vad.onnx` | at least one speech segment in a speech clip | JVM, native |
 | Keyword spotting | `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01` | the configured keyword fires | JVM, native |
 | Punctuation | `sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8` | punctuation is inserted | JVM, native |
-| Speech enhancement | `gtcrn_simple.onnx` | output length equals input length | JVM |
+| Speech enhancement | `gtcrn_simple.onnx` | non-empty output whose duration matches the input | JVM, native |
 | Streaming ASR | `sherpa-onnx-streaming-zipformer-en-20M-2023-02-17` | non-empty transcript, endpoint reached | JVM, native |
 | Speaker diarization | pyannote segmentation + `3dspeaker` embedding | two speakers, ordered turns | JVM, native |
 | TTS, lexicon | `vits-icefall-zh-aishell3` | audio with samples at the model's sample rate | JVM, native |
-| TTS, phonemes | `vits-piper-en_US-amy-low` | audio when codepoints are supplied; error when not | JVM |
+| TTS, phonemes | `vits-piper-en_US-amy-low` | audio when codepoints are supplied; error when not | JVM, native |
 
-Android and the native desktops share a transport with one of these two, but
-neither runs the per-feature inference assertions itself: the Android device
-suite transcribes one model and checks the packaged `.so` advertises every
-feature, and the Linux and Windows jobs run `nativeFeatureTest` only when a
-feature model directory is configured. Read the table as "which suite proves
-this feature runs", not "which platforms ship it".
+Android is the one target that does not run per-feature inference assertions
+itself: the device suite transcribes one model and checks the packaged `.so`
+advertises every feature. That is packaging and transport evidence, not
+per-feature evidence. On Linux and Windows the shared native suite now runs
+against the pinned models in CI, so it does assert them. Read the table as
+"which suite proves this feature runs", not "which platforms ship it".
 
 ## Explicitly unsupported
 

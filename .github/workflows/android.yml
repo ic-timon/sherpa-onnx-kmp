@@ -65,78 +65,11 @@ jobs:
           ANDROID_ABI: ${{ matrix.abi }}
         run: ./scripts/build-android-native.sh
 
-  # The emulator job above exercises x86_64 because that is the ABI a
-  # GitHub-hosted x86 runner can execute with KVM. The arm64-v8a slice is the
-  # primary ABI for real phones, so it gets its own job on an arm64 runner.
-  # Without it, arm64-v8a is compiled and symbol-checked but never executed.
-  #
-  # The arm64 runner image ships no Android SDK, unlike the x86 images, so the
-  # toolchain is installed here explicitly.
-  emulator-arm64:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 120
-    env:
-      ANDROID_SDK_ROOT: /home/runner/android-sdk
-      ANDROID_HOME: /home/runner/android-sdk
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Install Android command line tools
-        run: |
-          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
-          cd "$ANDROID_SDK_ROOT/cmdline-tools"
-          curl -fsSL -o tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-          unzip -q tools.zip
-          mv cmdline-tools latest
-          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --version
-      - name: Ensure Android NDK
-        run: |
-          if [[ ! -d "$ANDROID_SDK_ROOT/ndk/28.2.13676358" ]]; then
-            yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "ndk;28.2.13676358" >/dev/null
-          fi
-      - name: Verify KVM is available
-        run: |
-          # On an arm64 host the arm64 emulator needs KVM to be usable at all.
-          # Software emulation would take longer than the job timeout for a
-          # single inference, so a missing /dev/kvm is a hard failure, not a
-          # reason to fall back.
-          test -e /dev/kvm || {
-            echo "No /dev/kvm on this runner; an arm64 emulator cannot run here" >&2
-            exit 1
-          }
-          ls -l /dev/kvm
-      - name: Cache native dependencies and builds
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/sherpa-onnx-kmp
-            build/android-arm64-v8a
-            build/upstream
-          key: android-arm64-v8a-${{ hashFiles('scripts/fetch-native-deps.sh', 'patches/0001-parse-options-try-set-option.patch', 'native/**') }}
-      - name: Build Android JNI libraries
-        env:
-          ANDROID_ABI: arm64-v8a
-        run: ./scripts/build-android-native.sh
-      - name: Prepare pinned model assets
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: ./scripts/prepare-android-test-assets.sh
-      - name: Run Android instrumented tests
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 36
-          target: google_apis
-          arch: arm64-v8a
-          profile: pixel_6
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
-          script: ./gradlew :sherpa-onnx-kmp:connectedAndroidDeviceTest --stacktrace
-
+  # Only x86_64 executes here, because KVM acceleration on a hosted x86 runner
+  # is the only way an emulator boots fast enough to run inference. An arm64
+  # emulator was tried on `ubuntu-24.04-arm` and that image has no /dev/kvm, so
+  # it cannot boot at all; arm64-v8a therefore stays a compile-and-symbol-check
+  # slice and its last execution evidence is a physical device.
   emulator:
     runs-on: ubuntu-latest
     timeout-minutes: 60

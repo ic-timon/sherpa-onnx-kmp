@@ -16,15 +16,16 @@ result schema; the compatibility contract is in
 - Android (`androidTarget`, JNI): AAR for arm64-v8a, armeabi-v7a, x86, x86_64.
   The device suite transcribes a pinned model and asserts the packaged bridge's
   exported-symbol and capability surface. It runs on an API 36 x86_64 emulator,
-  which is the only ABI the GitHub-hosted runner can execute without
-  cross-architecture emulation; an arm64-v8a emulator job covers the arm64 slice.
+  the only ABI a hosted runner can execute: `ubuntu-24.04-arm` has no
+  `/dev/kvm`, so an arm64 emulator cannot boot there. The arm64-v8a slice is
+  compiled and its exports are inspected, but no arm64 code has executed in CI.
 - iOS (`iosArm64`, `iosSimulatorArm64`) and macOS (`macosArm64`): one shared
   Kotlin/Native cinterop transport in `nativeMain`. Simulator arm64 and macOS
-  arm64 run the shared contract suite and the shared real-model feature suite,
-  which covers six of the eight features: VAD, streaming ASR, TTS via the
-  lexicon path, speaker diarization, punctuation, and keyword spotting. The
-  remaining two — speech enhancement and the Piper phoneme TTS path — are
-  asserted by the JVM suite. The device slice builds, links, and signs.
+  arm64 run the shared contract suite and the shared real-model feature suite.
+  That suite covers all eight features now that speech enhancement and the
+  Piper phoneme TTS path live in `nativeFeatureTest`; before that it covered
+  six, and the 1.0.0 notes claimed eight. The device slice builds, links, and
+  signs.
 - Linux (`linuxX64`, `linuxArm64`) and Windows (`mingwX64`): the same transport,
   different linking. Linux ships a shared bridge with a sibling
   `libonnxruntime.so`; Windows ships a DLL with static ONNX Runtime. See ADR 0007
@@ -58,12 +59,11 @@ build that omits a feature says so instead of failing at call time.
 
 ### Verification recorded for this release
 
-- `jvmTest` 45, `jsNodeTest` 36, `jsBrowserTest` 36, `macosArm64Test` 42,
-  `iosSimulatorArm64Test` 42, Android device 2 — all passing.
-- Eight real-model feature suites on the JVM. The shared `nativeFeatureTest`
-  suite that macOS arm64, iOS Simulator, Linux, and Windows run covers six:
-  VAD, streaming ASR, lexicon TTS, speaker diarization, punctuation, and
-  keyword spotting.
+- `jvmTest` 46, `jsNodeTest` 37, `jsBrowserTest` 37, `macosArm64Test` 45,
+  `iosSimulatorArm64Test` 45, Android device 2 — 0 failures, 0 skipped.
+- Eight real-model feature suites on the JVM, and the same eight on the shared
+  `nativeFeatureTest` suite that macOS arm64, iOS Simulator, Linux, and Windows
+  run.
 - Bridge C ABI probe: ABI integer, 10 resources, 35 operations, typed failures,
   real TTS synthesis and audio pull.
 - Release hardening: header/library ABI agreement, dependency audit, bounded
@@ -80,9 +80,10 @@ and they are not interchangeable:
   Android device suite transcribes one model and asserts the packaged `.so`
   advertises every feature, so the Android half is transport and packaging
   evidence rather than per-feature inference evidence.
-- Native cinterop (Apple, Linux, Windows) — six features against pinned models
-  on macOS arm64 and iOS Simulator. Linux and Windows run the same suite, but
-  only exercise it when a feature model directory is configured.
+- Native cinterop (Apple, Linux, Windows) — eight features against pinned models
+  on macOS arm64, iOS Simulator, Linux x64/arm64, and Windows x64. Every one of
+  those jobs now prepares the models and exports both directories before the
+  config task runs, so a suite that finds no fixtures fails instead of skipping.
 - Web worker — offline ASR end to end in Chromium. Every other feature is
   covered by the capability-parity probe, which proves the module was built with
   the resource, not that the call completes in a worker.
@@ -98,8 +99,6 @@ and they are not interchangeable:
   the development host.
 - The memory-growth check runs in a shortened mode on the CI runner; the full
   run is a local gate.
-- Speech enhancement and the Piper phoneme TTS path have no native-transport
-  feature test, so the Apple and desktop suites cover six of the eight features.
 - Web feature coverage beyond offline ASR is capability parity, not a behavioral
   assertion. The browser end-to-end check drives Chromium only.
 - The glibc floor on Linux is the build host's, not a policy value.

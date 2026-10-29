@@ -104,22 +104,22 @@ fails the build if any of the ten resources is missing.
 
 ### Real-model feature suites
 
-The JVM suite asserts all eight features against pinned models over the JNI
-transport. The shared `nativeFeatureTest` source set asserts six of them on
-macOS arm64 and the iOS Simulator over the native cinterop transport. The
-overlap is deliberate, not accidental: the two suites exercise different
-transports, so a feature proven only by the JVM suite is not proven for Apple.
+Both real-model suites assert all eight features against pinned models. The
+JVM suite runs over the JNI transport; the shared `nativeFeatureTest` source
+set runs over the native cinterop transport on macOS arm64 and the iOS
+Simulator. They stay separate because the transports differ: a feature proven
+by one is not proven for the other.
 
 | Feature | Model | JVM | Native |
 | --- | --- | --- | --- |
 | VAD | `silero_vad.onnx` | ✓ | ✓ |
 | Keyword spotting | `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01` | ✓ | ✓ |
 | Punctuation | `sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8` | ✓ | ✓ |
-| Speech enhancement | `gtcrn_simple.onnx` | ✓ | — |
+| Speech enhancement | `gtcrn_simple.onnx` | ✓ | ✓ |
 | Streaming ASR | `sherpa-onnx-streaming-zipformer-en-20M-2023-02-17` | ✓ | ✓ |
 | Speaker diarization | `sherpa-onnx-pyannote-segmentation-3-0` + `3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx` | ✓ | ✓ |
 | TTS, lexicon path | `vits-icefall-zh-aishell3` | ✓ | ✓ |
-| TTS, phoneme path | `vits-piper-en_US-amy-low` | ✓ | — |
+| TTS, phoneme path | `vits-piper-en_US-amy-low` | ✓ | ✓ |
 
 ### Bridge C ABI
 
