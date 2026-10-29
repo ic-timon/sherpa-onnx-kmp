@@ -308,6 +308,20 @@ build_windows_x64() {
   if [[ -n "$implib" ]]; then
     cp -f "$implib" "$build_dir/lib/"
   fi
+
+  # MSVC writes a DLL next to its own target directory, not into
+  # LIBRARY_OUTPUT_DIRECTORY, so stage the JNI DLL too when it was built.
+  if [[ "$jni_flag" == "ON" ]]; then
+    local jni_dll
+    jni_dll=$(find "$build_dir" -name "sherpa-onnx-kmp-jni.dll" | head -n 1)
+    if [[ -z "$jni_dll" ]]; then
+      echo "JNI DLL was not produced" >&2
+      return 1
+    fi
+    cp -f "$jni_dll" "$build_dir/lib/"
+    printf 'Windows JNI: %s\n' "$build_dir/lib/sherpa-onnx-kmp-jni.dll"
+  fi
+
   printf 'Windows bridge: %s\n' "$build_dir/lib/sherpa-onnx-portable-bridge.dll"
 }
 

@@ -146,20 +146,29 @@ jobs:
           else
             SHERPA_ONNX_KMP_DESKTOP_WITH_JNI=1 ./scripts/build-native-desktop.sh "$desktop_target"
             mkdir -p build/native/lib
-            # package-jvm-native.sh reads build/native/lib, so stage the two
-            # libraries the desktop build produced into that tree. Fail loudly if
-            # the JNI library was not built, because otherwise the packaging step
-            # reports a confusing "no JNI library found".
-            jni_lib=$(find "build/native-desktop/$desktop_target" -name "sherpa-onnx-kmp-jni.*" -print -quit)
-            if [[ -z "$jni_lib" ]]; then
-              echo "The desktop build did not produce sherpa-onnx-kmp-jni; tree:" >&2
-              find "build/native-desktop/$desktop_target" -name "*.so" -o -name "*.dylib" -o -name "*.dll" >&2
-              exit 1
-            fi
-            cp -f "$jni_lib" build/native/lib/
-            bridge_lib=$(find "build/native-desktop/$desktop_target" -name "sherpa-onnx-portable-bridge.*" \
-              -not -name "*.a" -not -name "*.lib" -print -quit)
-            cp -f "$bridge_lib" build/native/lib/
+            # The desktop build writes both libraries to <build>/lib. Match the
+            # shared-library suffixes explicitly: a bare `-name
+            # "sherpa-onnx-kmp-jni*"` also matches the CMakeFiles directory, and
+            # copying a directory there is an error rather than a no-op.
+            for pattern in sherpa-onnx-kmp-jni sherpa-onnx-portable-bridge; do
+              found=""
+              # Unix prefixes shared libraries with `lib`; Windows does not.
+              for candidate in \
+                "build/native-desktop/$desktop_target/lib/lib$pattern.so" \
+                "build/native-desktop/$desktop_target/lib/lib$pattern.dylib" \
+                "build/native-desktop/$desktop_target/lib/$pattern.dll"; do
+                if [[ -f "$candidate" ]]; then
+                  found="$candidate"
+                  break
+                fi
+              done
+              if [[ -z "$found" ]]; then
+                echo "The desktop build produced no $pattern shared library; tree:" >&2
+                ls -la "build/native-desktop/$desktop_target/lib" >&2 || true
+                exit 1
+              fi
+              cp -f "$found" build/native/lib/
+            done
           fi
       - name: Package the JVM native JAR
         shell: bash
